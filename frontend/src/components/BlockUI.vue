@@ -1,146 +1,151 @@
 <template>
-  <div class="block" :class="{ locked: estaBloqueadoPorOtro, editing: enfocado }">
-    <div class="block-menu" v-if="!estaBloqueadoPorOtro">
-      <button title="Añadir abajo" @click="emit('add-block', bloque.id)">＋</button>
-      <button title="Subir" @click="emit('move-up', bloque.id)">↑</button>
-      <button title="Bajar" @click="emit('move-down', bloque.id)">↓</button>
-      <button title="Eliminar" class="danger" @click="emit('delete-block', bloque.id)">✕</button>
+  <div class="block-row" @mouseenter="isHovered = true" @mouseleave="isHovered = false">
+    <div class="pro-block-controls" :class="{ 'visible': isHovered }">
+      <button @click="$emit('add-block', index)">＋</button>
+      <button @click="$emit('move-up', index)" :disabled="isFirst">∧</button>
+      <button @click="$emit('move-down', index)" :disabled="isLast">∨</button>
+      <button @click="$emit('delete-block', index)" class="btn-danger">✕</button>
     </div>
 
-    <span v-if="estaBloqueadoPorOtro" class="lock-badge">🔒 Editando…</span>
-
-    <div
-      ref="el"
-      class="block-content"
-      :contenteditable="!estaBloqueadoPorOtro"
-      data-placeholder="Escribe aquí un párrafo..."
-      @focus="alEnfocar"
-      @blur="alDesenfocar"
-      @input="actualizarContenido"
-      @keydown.enter.prevent="emit('add-block', bloque.id)"
-      @paste="alPegar"
-    ></div>
+    <div class="block-content">
+      <div 
+        class="rich-textarea"
+        contenteditable="true"
+        @input="onInput"
+        @keydown.enter.prevent="handleEnter"
+        ref="editorRef"
+        placeholder="Escribe algo o usa '/' para comandos..."
+      ></div>
+    </div>
   </div>
 </template>
 
 <script setup>
-import { ref, computed, watch, onMounted } from 'vue'
-import DOMPurify from 'dompurify'
+import { ref, onMounted, watch } from 'vue'
 
-const props = defineProps({ bloque: Object, miSocketId: String })
-const emit = defineEmits([
-  'solicitar-bloqueo', 'liberar-bloqueo', 'actualizar-texto',
-  'add-block', 'delete-block', 'move-up', 'move-down'
-])
-
-const el = ref(null)
-const enfocado = ref(false)
-
-const estaBloqueadoPorOtro = computed(() =>
-  props.bloque.bloqueadoPor && props.bloque.bloqueadoPor !== props.miSocketId
-)
-
-// Solo se permiten estas etiquetas (protege contra XSS entre usuarios)
-const limpiar = (html) =>
-  DOMPurify.sanitize(html || '', { ALLOWED_TAGS: ['b', 'strong', 'i', 'em', 'u', 's', 'strike', 'br'] })
-
-onMounted(() => { el.value.innerHTML = limpiar(props.bloque.contenido) })
-
-// Cambios que llegan de otros usuarios (si yo no estoy escribiendo aquí)
-watch(() => props.bloque.contenido, (nuevo) => {
-  if (document.activeElement === el.value) return
-  const limpio = limpiar(nuevo)
-  if (el.value.innerHTML !== limpio) el.value.innerHTML = limpio
+const props = defineProps({
+  bloque: Object,
+  index: Number,
+  isFirst: Boolean,
+  isLast: Boolean
 })
 
-const alEnfocar = () => {
-  enfocado.value = true
-  if (!estaBloqueadoPorOtro.value) emit('solicitar-bloqueo', props.bloque.id)
+const emit = defineEmits(['add-block', 'delete-block', 'move-up', 'move-down', 'update-content'])
+const isHovered = ref(false)
+const editorRef = ref(null)
+
+onMounted(() => {
+  if (editorRef.value && props.bloque?.contenido) {
+    editorRef.value.innerHTML = props.bloque.contenido
+  }
+})
+
+watch(() => props.bloque?.contenido, (newVal) => {
+  if (editorRef.value && editorRef.value.innerHTML !== newVal) {
+    editorRef.value.innerHTML = newVal || ''
+  }
+})
+
+const onInput = (e) => {
+  emit('update-content', { id: props.bloque.id, contenido: e.target.innerHTML })
 }
-const alDesenfocar = () => {
-  enfocado.value = false
-  emit('liberar-bloqueo', props.bloque.id)
-}
-const actualizarContenido = () => {
-  emit('actualizar-texto', { blockId: props.bloque.id, contenido: el.value.innerHTML })
-}
-// Pegar siempre como texto plano
-const alPegar = (e) => {
-  e.preventDefault()
-  document.execCommand('insertText', false, e.clipboardData.getData('text/plain'))
+
+const handleEnter = () => {
+  emit('add-block', props.index)
 }
 </script>
 
 <style scoped>
-.block {
+.block-row {
   position: relative;
+  display: flex;
   margin-bottom: 6px;
-  padding: 8px 14px;
-  border-radius: 14px;
-  border: 1px solid transparent;
-  transition: background .2s, border-color .2s, box-shadow .2s;
-}
-.block:hover:not(.locked) { background: rgba(255,255,255,.05); }
-.block.editing {
-  background: rgba(255,255,255,.07);
-  border-color: rgba(185,169,232,.45);
-  box-shadow: 0 0 0 4px rgba(185,169,232,.08);
-}
-.block.locked {
-  background: rgba(43,37,99,.35);
-  border-color: rgba(185,169,232,.35);
 }
 
-.block-content {
-  outline: none;
-  min-height: 1.7em;
-  font-size: 1.08rem;
-  line-height: 1.7;
-  color: rgba(255,255,255,.95);
-  word-break: break-word;
-}
-.block.locked .block-content { opacity: .55; cursor: not-allowed; }
-.block-content:empty::before {
-  content: attr(data-placeholder);
-  color: rgba(255,255,255,.28);
+.pro-block-controls {
+  position: absolute;
+  left: -110px;
+  top: 4px;
+  display: flex;
+  gap: 2px;
+  background: rgba(185, 169, 232, 0.15);
+  backdrop-filter: blur(16px) saturate(180%);
+  -webkit-backdrop-filter: blur(16px) saturate(180%);
+  border: 1px solid rgba(185, 169, 232, 0.4);
+  border-radius: 6px;
+  padding: 2px;
+  box-shadow: 0 8px 24px rgba(43, 37, 99, 0.15);
+  opacity: 0;
+  transform: translateX(10px) scale(0.95);
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
   pointer-events: none;
 }
 
-.lock-badge {
-  position: absolute;
-  top: -10px; right: 12px;
-  font-size: .7rem; font-weight: 600;
-  padding: 3px 10px;
-  border-radius: 999px;
-  background: rgba(185,169,232,.25);
-  border: 1px solid rgba(185,169,232,.5);
-  backdrop-filter: blur(10px);
+.block-row:hover .pro-block-controls {
+  opacity: 1;
+  transform: translateX(0) scale(1);
+  pointer-events: auto;
 }
 
-/* Menú lateral: aparece en hover */
-.block-menu {
-  position: absolute;
-  left: -50px; top: 6px;
-  display: flex; flex-direction: column; gap: 4px;
-  opacity: 0;
-  transform: translateX(6px);
-  transition: opacity .2s, transform .2s;
-}
-.block:hover .block-menu,
-.block:focus-within .block-menu { opacity: 1; transform: translateX(0); }
-
-.block-menu button {
-  width: 28px; height: 28px;
-  border-radius: 10px;
-  border: 1px solid rgba(255,255,255,.18);
-  background: rgba(255,255,255,.1);
-  backdrop-filter: blur(14px);
-  color: #fff;
-  font-size: .8rem;
+.pro-block-controls button {
+  background: transparent;
+  border: none;
+  color: #2B2563;
+  font-size: 1rem;
+  font-weight: 600;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
   cursor: pointer;
-  transition: background .15s, transform .15s;
+  transition: all 0.15s;
 }
-.block-menu button:hover { background: rgba(185,169,232,.35); }
-.block-menu button:active { transform: scale(.9); }
-.block-menu button.danger:hover { background: rgba(239,68,68,.45); }
+
+.pro-block-controls button:hover:not(:disabled) {
+  background: rgba(43, 37, 99, 0.15);
+  color: #2B2563;
+}
+
+.pro-block-controls button:disabled {
+  opacity: 0.2;
+  cursor: default;
+}
+
+.btn-danger:hover:not(:disabled) {
+  background: rgba(239, 68, 68, 0.15) !important;
+  color: #ef4444 !important;
+}
+
+.block-content {
+  width: 100%;
+}
+
+.rich-textarea {
+  width: 100%;
+  min-height: 1.5em;
+  background: transparent;
+  color: #1a1a1a;
+  border: 1px solid transparent;
+  font-size: 1.1rem;
+  line-height: 1.6;
+  font-family: inherit;
+  padding: 4px 8px;
+  border-radius: 4px;
+  transition: all 0.2s;
+  outline: none;
+}
+
+.rich-textarea:focus {
+  background: rgba(185, 169, 232, 0.05);
+  border-color: rgba(43, 37, 99, 0.3);
+}
+
+.rich-textarea:empty:before {
+  content: attr(placeholder);
+  color: #a0a0a0;
+  pointer-events: none;
+  display: block;
+}
 </style>

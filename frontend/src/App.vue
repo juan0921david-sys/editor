@@ -1,11 +1,25 @@
+<template>
+  <div class="ios-background">
+    <div class="blob indigo-blob"></div>
+    <div class="blob lavender-blob"></div>
+  </div>
+  <MainLayout>
+    <router-view />
+  </MainLayout>
+</template>
+
+<script setup>
+import MainLayout from './layouts/MainLayout.vue'
+</script>
+
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap');
 
 body, html { 
   margin: 0; padding: 0; 
   font-family: 'Inter', system-ui, sans-serif;
-  background-color: #f8f9fa; /* Fondo base claro para contraste */
-  color: #2B2563; /* Texto por defecto en Índigo */
+  background-color: #f8f9fa;
+  color: #2B2563;
   overflow-x: hidden;
 }
 
@@ -16,7 +30,7 @@ body, html {
   top: 0; left: 0; width: 100vw; height: 100vh;
   z-index: -1;
   overflow: hidden;
-  background: rgba(185, 169, 232, 0.1); /* Tinte Lavanda súper transparente */
+  background: rgba(185, 169, 232, 0.1);
 }
 
 .blob {

@@ -1,161 +1,249 @@
 <template>
-  <div class="doc-layout">
-    <header class="glass navbar">
-      <div class="logo">📄 Editor_Docs</div>
-      <div class="user-status"><span class="dot"></span> En línea</div>
+  <div class="app-wrapper" @click="closeMenu">
+    <header class="pro-navbar" @click.stop>
+      <div class="nav-content">
+        <div class="nav-left">
+          <div class="logo-icon">📄</div>
+          <div class="doc-controls">
+            <input 
+              type="text" 
+              v-model="documentTitle" 
+              class="doc-title-input"
+              placeholder="Documento sin título"
+            />
+            <div class="doc-menu">
+              <div class="menu-container" v-for="menu in menus" :key="menu.name">
+                <button class="menu-item" @click="toggleMenu(menu.name)">{{ menu.name }}</button>
+                <div class="dropdown-glass" v-if="activeMenu === menu.name">
+                  <button 
+                    class="dropdown-item" 
+                    v-for="opcion in menu.options" 
+                    :key="opcion"
+                    @click="closeMenu"
+                  >
+                    {{ opcion }}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="nav-right">
+          <div class="connected-users">
+            <img src="https://ui-avatars.com/api/?name=Juan&background=B9A9E8&color=2B2563" class="avatar">
+            <img src="https://ui-avatars.com/api/?name=Nicolas&background=2B2563&color=fff" class="avatar">
+          </div>
+          <button class="btn-share">Compartir</button>
+        </div>
+      </div>
     </header>
-
-    <div class="toolbar-wrap">
-      <div class="glass toolbar">
-        <button class="tool-btn text">Archivo</button>
-        <button class="tool-btn text">Editar</button>
-        <button class="tool-btn text">Ver</button>
-
-        <span class="sep"></span>
-
-        <!-- @mousedown.prevent evita que el botón le quite el foco al bloque -->
-        <button class="tool-btn" :class="{ on: activos.bold }" title="Negrita"
-          @mousedown.prevent="formatear('bold')"><b>B</b></button>
-        <button class="tool-btn" :class="{ on: activos.italic }" title="Cursiva"
-          @mousedown.prevent="formatear('italic')"><i>I</i></button>
-        <button class="tool-btn" :class="{ on: activos.underline }" title="Subrayado"
-          @mousedown.prevent="formatear('underline')"><u>U</u></button>
-        <button class="tool-btn" :class="{ on: activos.strikeThrough }" title="Tachado"
-          @mousedown.prevent="formatear('strikeThrough')"><s>S</s></button>
-        <button class="tool-btn" title="Quitar formato"
-          @mousedown.prevent="formatear('removeFormat')">⌫</button>
-      </div>
-    </div>
-
-    <main class="workspace-area">
-      <div class="glass document-page">
-        <slot></slot>
-      </div>
+    
+    <main class="main-content">
+      <slot></slot>
     </main>
   </div>
 </template>
 
 <script setup>
-import { reactive, onMounted, onUnmounted } from 'vue'
+import { ref } from 'vue'
 
-const activos = reactive({ bold: false, italic: false, underline: false, strikeThrough: false })
+const documentTitle = ref('Estructura Editor Colaborativo')
+const activeMenu = ref(null)
 
-const formatear = (comando) => {
-  document.execCommand(comando, false, null)
-  actualizarActivos()
+const menus = [
+  { name: 'Archivo', options: ['Nuevo documento', 'Abrir...', 'Hacer una copia', 'Descargar como PDF'] },
+  { name: 'Editar', options: ['Deshacer', 'Rehacer', 'Cortar', 'Copiar', 'Pegar'] },
+  { name: 'Ver', options: ['Diseño de impresión', 'Modo lectura', 'Pantalla completa'] },
+  { name: 'Insertar', options: ['Imagen', 'Tabla', 'Enlace', 'Caracteres especiales'] },
+  { name: 'Formato', options: ['Texto', 'Estilos de párrafo', 'Alinear y aplicar sangría'] },
+  { name: 'Herramientas', options: ['Ortografía y gramática', 'Contar palabras'] }
+]
+
+const toggleMenu = (menuName) => {
+  activeMenu.value = activeMenu.value === menuName ? null : menuName
 }
 
-const actualizarActivos = () => {
-  for (const c of Object.keys(activos)) {
-    try { activos[c] = document.queryCommandState(c) } catch { activos[c] = false }
-  }
+const closeMenu = () => {
+  activeMenu.value = null
 }
-
-onMounted(() => document.addEventListener('selectionchange', actualizarActivos))
-onUnmounted(() => document.removeEventListener('selectionchange', actualizarActivos))
 </script>
 
 <style scoped>
-.doc-layout {
-  position: relative;
-  z-index: 1;
-  min-height: 100vh;
+.app-wrapper {
   display: flex;
   flex-direction: column;
+  min-height: 100vh;
 }
 
-/* ===== Cristal iOS reutilizable ===== */
-.glass {
-  background: linear-gradient(135deg, rgba(255,255,255,.14) 0%, rgba(255,255,255,.04) 100%);
-  backdrop-filter: blur(30px) saturate(180%);
-  -webkit-backdrop-filter: blur(30px) saturate(180%);
-  border: 1px solid rgba(255,255,255,.16);
-  border-top-color: rgba(255,255,255,.38);
-  border-left-color: rgba(255,255,255,.26);
-  box-shadow:
-    0 10px 40px rgba(0,0,0,.45),
-    inset 0 1px 0 rgba(255,255,255,.35),
-    inset 0 -1px 0 rgba(255,255,255,.05);
-}
-
-.navbar {
+.pro-navbar {
   position: sticky;
-  top: 12px;
-  z-index: 10;
-  margin: 12px auto 0;
-  width: calc(100% - 32px);
-  max-width: 1000px;
-  padding: 12px 22px;
-  border-radius: 22px;
+  top: 0;
+  z-index: 50;
+  background: rgba(43, 37, 99, 0.45);
+  backdrop-filter: blur(35px) saturate(200%);
+  -webkit-backdrop-filter: blur(35px) saturate(200%);
+  border-bottom: 1px solid rgba(185, 169, 232, 0.3);
+  padding: 8px 16px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.15);
+}
+
+.nav-content {
   display: flex;
   justify-content: space-between;
   align-items: center;
 }
-.logo { font-size: 1.1rem; font-weight: 700; letter-spacing: -.01em; }
-.user-status {
-  display: flex; align-items: center; gap: 8px;
-  font-size: .8rem;
-  background: rgba(255,255,255,.1);
-  border: 1px solid rgba(255,255,255,.15);
-  padding: 5px 12px;
-  border-radius: 999px;
-}
-.dot { width: 8px; height: 8px; border-radius: 50%; background: #4ade80; box-shadow: 0 0 10px #4ade80; }
 
-.toolbar-wrap {
-  position: sticky;
-  top: 80px;
-  z-index: 9;
+.nav-left {
   display: flex;
-  justify-content: center;
-  margin-top: 14px;
-  padding: 0 16px;
-}
-.toolbar {
-  display: inline-flex;
   align-items: center;
+  gap: 16px;
+}
+
+.logo-icon {
+  font-size: 2.2rem;
+  color: #B9A9E8;
+}
+
+.doc-controls {
+  display: flex;
+  flex-direction: column;
   gap: 4px;
-  padding: 7px 10px;
-  border-radius: 20px;
-  flex-wrap: wrap;
 }
-.sep { width: 1px; height: 22px; background: rgba(255,255,255,.2); margin: 0 6px; }
 
-.tool-btn {
-  min-width: 36px; height: 36px;
-  padding: 0 10px;
-  border: none;
-  border-radius: 12px;
+.doc-title-input {
+  font-family: inherit;
+  font-size: 1.15rem;
+  font-weight: 500;
+  color: #ffffff;
   background: transparent;
-  color: #fff;
-  font-size: .95rem;
-  cursor: pointer;
-  transition: background .2s, transform .15s, box-shadow .2s;
-}
-.tool-btn.text { font-size: .85rem; font-weight: 600; color: rgba(255,255,255,.85); }
-.tool-btn:hover { background: rgba(185,169,232,.22); }
-.tool-btn:active { transform: scale(.92); }
-.tool-btn.on {
-  background: rgba(185,169,232,.4);
-  box-shadow: inset 0 1px 0 rgba(255,255,255,.3), 0 0 14px rgba(185,169,232,.35);
+  border: 1px solid transparent;
+  border-radius: 4px;
+  padding: 2px 6px;
+  width: 300px;
+  transition: all 0.2s ease;
+  outline: none;
+  margin-left: -6px;
 }
 
-.workspace-area {
+.doc-title-input:hover {
+  border-color: rgba(185, 169, 232, 0.4);
+}
+
+.doc-title-input:focus {
+  background: rgba(43, 37, 99, 0.6);
+  border-color: #B9A9E8;
+  box-shadow: 0 0 0 2px rgba(185, 169, 232, 0.3);
+}
+
+.doc-title-input::placeholder {
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.doc-menu {
+  display: flex;
+  gap: 2px;
+  margin-left: -6px;
+}
+
+.menu-container {
+  position: relative;
+}
+
+.menu-item {
+  background: transparent;
+  border: none;
+  color: #e2dcf5;
+  font-size: 0.85rem;
+  font-weight: 500;
+  padding: 4px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+.menu-item:hover {
+  background: rgba(185, 169, 232, 0.25);
+  color: #ffffff;
+}
+
+.dropdown-glass {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  margin-top: 5px;
+  min-width: 220px;
+  background: rgba(43, 37, 99, 0.85);
+  backdrop-filter: blur(25px) saturate(180%);
+  -webkit-backdrop-filter: blur(25px) saturate(180%);
+  border: 1px solid rgba(185, 169, 232, 0.3);
+  border-radius: 8px;
+  padding: 6px 0;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.3);
+  display: flex;
+  flex-direction: column;
+}
+
+.dropdown-item {
+  background: transparent;
+  border: none;
+  color: #ffffff;
+  text-align: left;
+  padding: 8px 16px;
+  font-size: 0.9rem;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.dropdown-item:hover {
+  background: rgba(185, 169, 232, 0.2);
+  color: #B9A9E8;
+}
+
+.nav-right {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+}
+
+.connected-users {
+  display: flex;
+}
+
+.avatar {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: 2px solid rgba(185, 169, 232, 0.5);
+  margin-left: -10px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+}
+
+.btn-share {
+  background: rgba(185, 169, 232, 0.8);
+  backdrop-filter: blur(10px);
+  color: #2B2563;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  padding: 8px 20px;
+  border-radius: 24px;
+  font-weight: 600;
+  font-size: 0.9rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  box-shadow: 0 4px 12px rgba(43, 37, 99, 0.3);
+}
+
+.btn-share:hover {
+  background: rgba(185, 169, 232, 1);
+  transform: translateY(-1px);
+  box-shadow: 0 6px 16px rgba(43, 37, 99, 0.5);
+}
+
+.main-content {
   flex: 1;
   display: flex;
-  justify-content: center;
-  padding: 24px 16px 60px;
-}
-.document-page {
-  width: 100%;
-  max-width: 850px;
-  min-height: 900px;
-  padding: 60px 80px;
-  border-radius: 28px;
-  color: #fff;
-}
-
-@media (max-width: 720px) {
-  .document-page { padding: 36px 20px 36px 52px; }
+  flex-direction: column;
+  align-items: center;
+  padding: 2rem 1rem;
 }
 </style>
