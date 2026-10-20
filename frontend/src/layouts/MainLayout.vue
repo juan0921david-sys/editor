@@ -1,95 +1,161 @@
 <template>
   <div class="doc-layout">
-    <!--Barra Superior-->
-    <header class="navbar-indigo">
+    <header class="glass navbar">
       <div class="logo">📄 Editor_Docs</div>
-      <div class="user-status">● En línea</div>
+      <div class="user-status"><span class="dot"></span> En línea</div>
     </header>
 
-    <!--Barra de Herramientas-->
-    <div class="toolbar-lavender">
-      <button class="tool-btn">Archivo</button>
-      <button class="tool-btn">Editar</button>
-      <button class="tool-btn">Ver</button>
+    <div class="toolbar-wrap">
+      <div class="glass toolbar">
+        <button class="tool-btn text">Archivo</button>
+        <button class="tool-btn text">Editar</button>
+        <button class="tool-btn text">Ver</button>
+
+        <span class="sep"></span>
+
+        <!-- @mousedown.prevent evita que el botón le quite el foco al bloque -->
+        <button class="tool-btn" :class="{ on: activos.bold }" title="Negrita"
+          @mousedown.prevent="formatear('bold')"><b>B</b></button>
+        <button class="tool-btn" :class="{ on: activos.italic }" title="Cursiva"
+          @mousedown.prevent="formatear('italic')"><i>I</i></button>
+        <button class="tool-btn" :class="{ on: activos.underline }" title="Subrayado"
+          @mousedown.prevent="formatear('underline')"><u>U</u></button>
+        <button class="tool-btn" :class="{ on: activos.strikeThrough }" title="Tachado"
+          @mousedown.prevent="formatear('strikeThrough')"><s>S</s></button>
+        <button class="tool-btn" title="Quitar formato"
+          @mousedown.prevent="formatear('removeFormat')">⌫</button>
+      </div>
     </div>
-    
-    <!-- Área principal con fondo gris -->
+
     <main class="workspace-area">
-      <!-- La "hoja blanca" del documento -->
-      <div class="document-page">
+      <div class="glass document-page">
         <slot></slot>
       </div>
     </main>
   </div>
 </template>
 
+<script setup>
+import { reactive, onMounted, onUnmounted } from 'vue'
+
+const activos = reactive({ bold: false, italic: false, underline: false, strikeThrough: false })
+
+const formatear = (comando) => {
+  document.execCommand(comando, false, null)
+  actualizarActivos()
+}
+
+const actualizarActivos = () => {
+  for (const c of Object.keys(activos)) {
+    try { activos[c] = document.queryCommandState(c) } catch { activos[c] = false }
+  }
+}
+
+onMounted(() => document.addEventListener('selectionchange', actualizarActivos))
+onUnmounted(() => document.removeEventListener('selectionchange', actualizarActivos))
+</script>
+
 <style scoped>
 .doc-layout {
+  position: relative;
+  z-index: 1;
   min-height: 100vh;
-  background-color: #f1f3f4; /* Gris muy claro tipo Google Docs */
-  font-family: 'Inter', system-ui, sans-serif;
   display: flex;
   flex-direction: column;
 }
 
-.navbar-indigo {
-  background-color: #2B2563; /* Tu color principal */
-  color: #ffffff;
-  padding: 10px 20px;
+/* ===== Cristal iOS reutilizable ===== */
+.glass {
+  background: linear-gradient(135deg, rgba(255,255,255,.14) 0%, rgba(255,255,255,.04) 100%);
+  backdrop-filter: blur(30px) saturate(180%);
+  -webkit-backdrop-filter: blur(30px) saturate(180%);
+  border: 1px solid rgba(255,255,255,.16);
+  border-top-color: rgba(255,255,255,.38);
+  border-left-color: rgba(255,255,255,.26);
+  box-shadow:
+    0 10px 40px rgba(0,0,0,.45),
+    inset 0 1px 0 rgba(255,255,255,.35),
+    inset 0 -1px 0 rgba(255,255,255,.05);
+}
+
+.navbar {
+  position: sticky;
+  top: 12px;
+  z-index: 10;
+  margin: 12px auto 0;
+  width: calc(100% - 32px);
+  max-width: 1000px;
+  padding: 12px 22px;
+  border-radius: 22px;
   display: flex;
   justify-content: space-between;
   align-items: center;
 }
-
-.logo {
-  font-size: 1.2rem;
-  font-weight: bold;
-}
-
+.logo { font-size: 1.1rem; font-weight: 700; letter-spacing: -.01em; }
 .user-status {
-  font-size: 0.85rem;
-  background: rgba(255,255,255,0.2);
-  padding: 4px 10px;
-  border-radius: 12px;
+  display: flex; align-items: center; gap: 8px;
+  font-size: .8rem;
+  background: rgba(255,255,255,.1);
+  border: 1px solid rgba(255,255,255,.15);
+  padding: 5px 12px;
+  border-radius: 999px;
 }
+.dot { width: 8px; height: 8px; border-radius: 50%; background: #4ade80; box-shadow: 0 0 10px #4ade80; }
 
-.toolbar-lavender {
-  background-color: #B9A9E8; /* Tu color secundario */
-  padding: 8px 20px;
+.toolbar-wrap {
+  position: sticky;
+  top: 80px;
+  z-index: 9;
   display: flex;
-  gap: 15px;
-  border-bottom: 1px solid #a393d1;
+  justify-content: center;
+  margin-top: 14px;
+  padding: 0 16px;
 }
+.toolbar {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 7px 10px;
+  border-radius: 20px;
+  flex-wrap: wrap;
+}
+.sep { width: 1px; height: 22px; background: rgba(255,255,255,.2); margin: 0 6px; }
 
 .tool-btn {
-  background: transparent;
+  min-width: 36px; height: 36px;
+  padding: 0 10px;
   border: none;
-  color: #2B2563;
-  font-weight: 600;
+  border-radius: 12px;
+  background: transparent;
+  color: #fff;
+  font-size: .95rem;
   cursor: pointer;
-  padding: 5px 8px;
-  border-radius: 4px;
+  transition: background .2s, transform .15s, box-shadow .2s;
 }
-
-.tool-btn:hover {
-  background-color: rgba(255, 255, 255, 0.4);
+.tool-btn.text { font-size: .85rem; font-weight: 600; color: rgba(255,255,255,.85); }
+.tool-btn:hover { background: rgba(185,169,232,.22); }
+.tool-btn:active { transform: scale(.92); }
+.tool-btn.on {
+  background: rgba(185,169,232,.4);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.3), 0 0 14px rgba(185,169,232,.35);
 }
 
 .workspace-area {
   flex: 1;
-  overflow-y: auto;
-  padding: 30px 10px;
   display: flex;
   justify-content: center;
+  padding: 24px 16px 60px;
+}
+.document-page {
+  width: 100%;
+  max-width: 850px;
+  min-height: 900px;
+  padding: 60px 80px;
+  border-radius: 28px;
+  color: #fff;
 }
 
-.document-page {
-  background-color: #ffffff;
-  width: 100%;
-  max-width: 850px; /* Ancho de una hoja A4/Carta */
-  min-height: 1056px;
-  padding: 60px 80px;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.12), 0 1px 2px rgba(0,0,0,0.24);
-  color: #333333;
+@media (max-width: 720px) {
+  .document-page { padding: 36px 20px 36px 52px; }
 }
 </style>

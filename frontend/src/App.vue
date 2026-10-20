@@ -1,86 +1,47 @@
-<template>
-  <div class="block-paragraph" :class="{ locked: estaBloqueadoPorOtro }">
-    <div class="block-indicator" v-if="estaBloqueadoPorOtro">
-      <span class="lock-icon">🔒 Editando...</span>
-    </div>
-    
-    <textarea 
-      v-model="contenidoLocal"
-      :disabled="estaBloqueadoPorOtro"
-      @focus="solicitarBloqueo"
-      @blur="liberarBloqueo"
-      @input="actualizarContenido"
-      placeholder="Escribe aquí un párrafo..."
-      rows="1"
-      oninput="this.style.height = '';this.style.height = this.scrollHeight + 'px'"
-    ></textarea>
-  </div>
-</template>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap');
 
-<script setup>
-import { ref, computed, watch, onMounted } from 'vue'
-
-const props = defineProps({ bloque: Object, miSocketId: String })
-const emit = defineEmits(['solicitar-bloqueo', 'liberar-bloqueo', 'actualizar-texto'])
-const contenidoLocal = ref(props.bloque.contenido)
-
-const estaBloqueadoPorOtro = computed(() => props.bloque.bloqueadoPor && props.bloque.bloqueadoPor !== props.miSocketId)
-
-watch(() => props.bloque.contenido, (nuevoValor) => {
-  if (estaBloqueadoPorOtro.value) contenidoLocal.value = nuevoValor
-})
-
-const solicitarBloqueo = () => { if (!estaBloqueadoPorOtro.value) emit('solicitar-bloqueo', props.bloque.id) }
-const liberarBloqueo = () => { emit('liberar-bloqueo', props.bloque.id) }
-const actualizarContenido = () => { emit('actualizar-texto', { blockId: props.bloque.id, contenido: contenidoLocal.value }) }
-</script>
-
-<style scoped>
-.block-paragraph {
-  position: relative;
-  margin-bottom: 10px;
-  padding: 5px 0;
-  border-left: 3px solid transparent;
-  transition: all 0.2s;
+body, html { 
+  margin: 0; padding: 0; 
+  font-family: 'Inter', system-ui, sans-serif;
+  background-color: #f8f9fa; /* Fondo base claro para contraste */
+  color: #2B2563; /* Texto por defecto en Índigo */
+  overflow-x: hidden;
 }
 
-/* Cuando uno pasa el mouse, se nota que es un bloque editable */
-.block-paragraph:hover:not(.locked) {
-  background-color: #f8f9fa;
-  border-radius: 4px;
+* { box-sizing: border-box; }
+
+.ios-background {
+  position: fixed;
+  top: 0; left: 0; width: 100vw; height: 100vh;
+  z-index: -1;
+  overflow: hidden;
+  background: rgba(185, 169, 232, 0.1); /* Tinte Lavanda súper transparente */
 }
 
-.block-paragraph.locked {
-  border-left: 3px solid #B9A9E8; /* Indicador Lavanda de bloqueo */
-  background-color: rgba(185, 169, 232, 0.05);
-}
-
-.block-indicator {
+.blob {
   position: absolute;
-  top: -15px;
-  left: 0;
-  font-size: 0.7rem;
-  color: #2B2563;
-  font-weight: bold;
+  border-radius: 50%;
+  filter: blur(120px);
+  opacity: 0.6;
+  animation: float-slow 15s infinite alternate ease-in-out;
 }
 
-textarea {
-  width: 100%;
-  background: transparent;
-  color: #000000;
-  border: none;
-  resize: none;
-  font-size: 1.1rem;
-  line-height: 1.6;
-  font-family: Arial, sans-serif;
-  overflow: hidden; /* Ocultar scroll, crece automáticamente */
+.indigo-blob {
+  background: #2B2563;
+  width: 50vw; height: 50vw;
+  top: -5vh; left: -5vw;
 }
 
-textarea:focus {
-  outline: none;
+.lavender-blob {
+  background: #B9A9E8;
+  width: 60vw; height: 60vw;
+  bottom: -10vh; right: -5vw;
+  animation-delay: -5s;
 }
 
-textarea::placeholder {
-  color: #cccccc;
+@keyframes float-slow {
+  0% { transform: translate(0, 0) scale(1); }
+  100% { transform: translate(5vw, 5vh) scale(1.05); }
 }
 </style>
