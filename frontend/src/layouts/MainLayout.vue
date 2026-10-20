@@ -1,45 +1,95 @@
 <template>
-  <div class="glass-layout">
-    <div class="bg-shape shape-blue"></div>
-    <div class="bg-shape shape-purple"></div>
-
-    <header class="glass-header">
-      <h1>Editor Colaborativo</h1>
-      <p class="status">● Sistema Glassmorphism</p>
+  <div class="doc-layout">
+    <!--Barra Superior-->
+    <header class="navbar-indigo">
+      <div class="logo">📄 Editor_Docs</div>
+      <div class="user-status">● En línea</div>
     </header>
+
+    <!--Barra de Herramientas-->
+    <div class="toolbar-lavender">
+      <button class="tool-btn">Archivo</button>
+      <button class="tool-btn">Editar</button>
+      <button class="tool-btn">Ver</button>
+    </div>
     
-    <main class="content-area">
-      <slot></slot>
+    <!-- Área principal con fondo gris -->
+    <main class="workspace-area">
+      <!-- La "hoja blanca" del documento -->
+      <div class="document-page">
+        <slot></slot>
+      </div>
     </main>
   </div>
 </template>
 
 <style scoped>
-.glass-layout {
-  position: relative;
+.doc-layout {
   min-height: 100vh;
-  background-color: #0f172a;
-  color: #f8fafc;
-  overflow: hidden;
+  background-color: #f1f3f4; /* Gris muy claro tipo Google Docs */
   font-family: 'Inter', system-ui, sans-serif;
+  display: flex;
+  flex-direction: column;
 }
-.bg-shape { position: absolute; border-radius: 50%; filter: blur(100px); z-index: 0; }
-.shape-blue { width: 400px; height: 400px; background-color: rgba(56, 189, 248, 0.4); top: -100px; left: -100px; }
-.shape-purple { width: 500px; height: 500px; background-color: rgba(168, 85, 247, 0.4); bottom: -150px; right: -100px; }
 
-.glass-header {
-  position: relative;
-  z-index: 1;
-  background: rgba(255, 255, 255, 0.05);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-  padding: 1.5rem 2rem;
+.navbar-indigo {
+  background-color: #2B2563; /* Tu color principal */
+  color: #ffffff;
+  padding: 10px 20px;
   display: flex;
   justify-content: space-between;
   align-items: center;
 }
-h1 { margin: 0; font-size: 1.4rem; font-weight: 600; }
-.status { margin: 0; font-size: 0.9rem; color: #38bdf8; }
-.content-area { position: relative; z-index: 1; max-width: 900px; margin: 2rem auto; padding: 0 1.5rem; }
+
+.logo {
+  font-size: 1.2rem;
+  font-weight: bold;
+}
+
+.user-status {
+  font-size: 0.85rem;
+  background: rgba(255,255,255,0.2);
+  padding: 4px 10px;
+  border-radius: 12px;
+}
+
+.toolbar-lavender {
+  background-color: #B9A9E8; /* Tu color secundario */
+  padding: 8px 20px;
+  display: flex;
+  gap: 15px;
+  border-bottom: 1px solid #a393d1;
+}
+
+.tool-btn {
+  background: transparent;
+  border: none;
+  color: #2B2563;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 5px 8px;
+  border-radius: 4px;
+}
+
+.tool-btn:hover {
+  background-color: rgba(255, 255, 255, 0.4);
+}
+
+.workspace-area {
+  flex: 1;
+  overflow-y: auto;
+  padding: 30px 10px;
+  display: flex;
+  justify-content: center;
+}
+
+.document-page {
+  background-color: #ffffff;
+  width: 100%;
+  max-width: 850px; /* Ancho de una hoja A4/Carta */
+  min-height: 1056px;
+  padding: 60px 80px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.12), 0 1px 2px rgba(0,0,0,0.24);
+  color: #333333;
+}
 </style>
