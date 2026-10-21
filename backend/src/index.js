@@ -4,6 +4,8 @@ const http = require('http');
 const { Server } = require('socket.io');
 require('dotenv').config();
 
+const db = require('./config/db'); 
+
 const app = express();
 const server = http.createServer(app);
 
@@ -13,6 +15,25 @@ const io = new Server(server, {
 
 app.use(cors());
 app.use(express.json());
+
+
+app.get('/api/status', async (req, res) => {
+  try {
+    const respuesta = await db.query('SELECT NOW()'); 
+    res.status(200).json({ 
+      status: 'success',
+      message: 'Conexión a PostgreSQL establecida correctamente.', 
+      timestamp: respuesta.rows[0].now 
+    });
+  } catch (error) {
+    console.error('Error de conexión a la base de datos:', error);
+    res.status(500).json({ 
+      status: 'error',
+      message: 'Error interno del servidor. No se pudo establecer conexión con la base de datos.' 
+    });
+  }
+});
+// ==========================================
 
 
 const semaforosBloques = {};
@@ -60,5 +81,5 @@ io.on('connection', (socket) => {
 
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
-  console.log(`🚀 Servidor backend corriendo en el puerto ${PORT}`);
+  console.log(`🚀 Servidor backend ejecutándose correctamente en el puerto ${PORT}`);
 });
