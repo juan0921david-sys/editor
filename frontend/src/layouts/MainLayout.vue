@@ -1,72 +1,218 @@
 <template>
-  <div class="app-wrapper" @click="closeMenu">
-    <header class="pro-navbar" @click.stop>
-      <div class="nav-content">
-        <div class="nav-left">
-          <div class="logo-icon">📄</div>
-          <div class="doc-controls">
-            <input 
-              type="text" 
-              v-model="documentTitle" 
-              class="doc-title-input"
-              placeholder="Documento sin título"
-            />
-            <div class="doc-menu">
-              <div class="menu-container" v-for="menu in menus" :key="menu.name">
-                <button class="menu-item" @click="toggleMenu(menu.name)">{{ menu.name }}</button>
-                <div class="dropdown-glass" v-if="activeMenu === menu.name">
-                  <button 
-                    class="dropdown-item" 
-                    v-for="opcion in menu.options" 
-                    :key="opcion"
-                    @click="closeMenu"
-                  >
-                    {{ opcion }}
-                  </button>
-                </div>
+  <div class="app-wrapper" @click="cerrarMenu">
+    <header class="px-navbar px-panel no-print" @click.stop>
+      <div class="nav-left">
+        <div class="logo-badge">DOC</div>
+        <div class="doc-controls">
+          <input
+            v-model="tituloDocumento"
+            class="doc-title-input"
+            type="text"
+            maxlength="60"
+            placeholder="Documento sin título"
+          />
+          <nav class="doc-menu">
+            <div class="menu-container" v-for="menu in menus" :key="menu.nombre">
+              <button
+                class="menu-item"
+                :class="{ abierto: menuActivo === menu.nombre }"
+                @mousedown.prevent
+                @click="alternarMenu(menu.nombre)"
+              >
+                {{ menu.nombre }}
+              </button>
+              <div class="px-dropdown px-panel" v-if="menuActivo === menu.nombre">
+                <button
+                  class="dropdown-item"
+                  v-for="opcion in menu.opciones"
+                  :key="opcion.etiqueta"
+                  @mousedown.prevent
+                  @click="ejecutarAccion(opcion.accion)"
+                >
+                  <span>{{ opcion.etiqueta }}</span>
+                  <span class="atajo" v-if="opcion.atajo">{{ opcion.atajo }}</span>
+                </button>
               </div>
             </div>
-          </div>
-        </div>
-
-        <div class="nav-right">
-          <div class="connected-users">
-            <img src="https://ui-avatars.com/api/?name=Juan&background=B9A9E8&color=2B2563" class="avatar">
-            <img src="https://ui-avatars.com/api/?name=Nicolas&background=2B2563&color=fff" class="avatar">
-          </div>
-          <button class="btn-share">Compartir</button>
+          </nav>
         </div>
       </div>
+
+      <div class="nav-right">
+        <div class="players">
+          <div class="player p1" title="Juan">J</div>
+          <div class="player p2" title="Nicolas">N</div>
+        </div>
+        <button
+          class="px-btn theme-btn"
+          :title="tema === 'dark' ? 'Cambiar a modo claro' : 'Cambiar a modo oscuro'"
+          @click="alternarTema"
+        >
+          {{ tema === 'dark' ? '☀' : '☾' }}
+        </button>
+        <button class="px-btn primary" @click="ejecutarAccion('compartir')">COMPARTIR</button>
+      </div>
     </header>
-    
+
     <main class="main-content">
       <slot></slot>
     </main>
+
+    <div class="toast px-panel no-print" v-if="aviso">{{ aviso }}</div>
   </div>
 </template>
 
 <script setup>
-import { ref } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 
-const documentTitle = ref('Estructura Editor Colaborativo')
-const activeMenu = ref(null)
-
-const menus = [
-  { name: 'Archivo', options: ['Nuevo documento', 'Abrir...', 'Hacer una copia', 'Descargar como PDF'] },
-  { name: 'Editar', options: ['Deshacer', 'Rehacer', 'Cortar', 'Copiar', 'Pegar'] },
-  { name: 'Ver', options: ['Diseño de impresión', 'Modo lectura', 'Pantalla completa'] },
-  { name: 'Insertar', options: ['Imagen', 'Tabla', 'Enlace', 'Caracteres especiales'] },
-  { name: 'Formato', options: ['Texto', 'Estilos de párrafo', 'Alinear y aplicar sangría'] },
-  { name: 'Herramientas', options: ['Ortografía y gramática', 'Contar palabras'] }
-]
-
-const toggleMenu = (menuName) => {
-  activeMenu.value = activeMenu.value === menuName ? null : menuName
+const leerAlmacen = (clave, defecto) => {
+  try {
+    return localStorage.getItem(clave) || defecto
+  } catch {
+    return defecto
+  }
 }
 
-const closeMenu = () => {
-  activeMenu.value = null
+const guardarAlmacen = (clave, valor) => {
+  try {
+    localStorage.setItem(clave, valor)
+  } catch {
+    return
+  }
 }
+
+const prefiereOscuro = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches
+
+const tema = ref(leerAlmacen('editor-tema', prefiereOscuro ? 'dark' : 'light'))
+const crt = ref(leerAlmacen('editor-crt', 'on'))
+const tituloDocumento = ref(leerAlmacen('editor-titulo', 'Estructura Editor Colaborativo'))
+const menuActivo = ref(null)
+const aviso = ref('')
+let temporizadorAviso = null
+
+document.documentElement.dataset.theme = tema.value
+document.documentElement.dataset.crt = crt.value
+
+watch(tema, (valor) => {
+  document.documentElement.dataset.theme = valor
+  guardarAlmacen('editor-tema', valor)
+})
+
+watch(crt, (valor) => {
+  document.documentElement.dataset.crt = valor
+  guardarAlmacen('editor-crt', valor)
+})
+
+watch(
+  tituloDocumento,
+  (valor) => {
+    guardarAlmacen('editor-titulo', valor)
+    document.title = `${valor.trim() || 'Documento sin título'} · Editor_Docs`
+  },
+  { immediate: true }
+)
+
+const menus = computed(() => [
+  {
+    nombre: 'Archivo',
+    opciones: [
+      { etiqueta: 'Nuevo documento', accion: 'nuevo' },
+      { etiqueta: 'Descargar como .txt', accion: 'txt' },
+      { etiqueta: 'Descargar como .html', accion: 'html' },
+      { etiqueta: 'Imprimir / Guardar PDF', accion: 'imprimir', atajo: 'Ctrl+P' }
+    ]
+  },
+  {
+    nombre: 'Editar',
+    opciones: [
+      { etiqueta: 'Deshacer', accion: 'undo', atajo: 'Ctrl+Z' },
+      { etiqueta: 'Rehacer', accion: 'redo', atajo: 'Ctrl+Y' },
+      { etiqueta: 'Cortar', accion: 'cut', atajo: 'Ctrl+X' },
+      { etiqueta: 'Copiar', accion: 'copy', atajo: 'Ctrl+C' },
+      { etiqueta: 'Seleccionar todo', accion: 'selectAll', atajo: 'Ctrl+A' }
+    ]
+  },
+  {
+    nombre: 'Ver',
+    opciones: [
+      { etiqueta: 'Pantalla completa', accion: 'fullscreen' },
+      { etiqueta: tema.value === 'dark' ? 'Cambiar a modo claro' : 'Cambiar a modo oscuro', accion: 'tema' },
+      { etiqueta: crt.value === 'on' ? 'Desactivar efecto CRT' : 'Activar efecto CRT', accion: 'crt' }
+    ]
+  }
+])
+
+const alternarMenu = (nombre) => {
+  menuActivo.value = menuActivo.value === nombre ? null : nombre
+}
+
+const cerrarMenu = () => {
+  menuActivo.value = null
+}
+
+const alternarTema = () => {
+  tema.value = tema.value === 'dark' ? 'light' : 'dark'
+}
+
+const mostrarAviso = (texto) => {
+  aviso.value = texto
+  clearTimeout(temporizadorAviso)
+  temporizadorAviso = setTimeout(() => {
+    aviso.value = ''
+  }, 2200)
+}
+
+const compartir = async () => {
+  try {
+    await navigator.clipboard.writeText(window.location.href)
+    mostrarAviso('ENLACE COPIADO')
+  } catch {
+    mostrarAviso('NO SE PUDO COPIAR')
+  }
+}
+
+const ejecutarAccion = (accion) => {
+  cerrarMenu()
+
+  if (['undo', 'redo', 'cut', 'copy', 'selectAll'].includes(accion)) {
+    document.execCommand(accion, false, null)
+  } else if (accion === 'imprimir') {
+    window.print()
+  } else if (accion === 'fullscreen') {
+    if (!document.fullscreenElement) {
+      document.documentElement.requestFullscreen()
+    } else {
+      document.exitFullscreen()
+    }
+  } else if (accion === 'nuevo') {
+    if (window.confirm('¿Crear un documento nuevo? Se borrará el contenido actual.')) {
+      window.dispatchEvent(new CustomEvent('limpiar-documento'))
+    }
+  } else if (accion === 'txt' || accion === 'html') {
+    window.dispatchEvent(
+      new CustomEvent('exportar-documento', {
+        detail: { formato: accion, titulo: tituloDocumento.value }
+      })
+    )
+  } else if (accion === 'tema') {
+    alternarTema()
+  } else if (accion === 'crt') {
+    crt.value = crt.value === 'on' ? 'off' : 'on'
+  } else if (accion === 'compartir') {
+    compartir()
+  }
+}
+
+const alTeclear = (e) => {
+  if (e.key === 'Escape') cerrarMenu()
+}
+
+onMounted(() => window.addEventListener('keydown', alTeclear))
+
+onUnmounted(() => {
+  window.removeEventListener('keydown', alTeclear)
+  clearTimeout(temporizadorAviso)
+})
 </script>
 
 <style scoped>
@@ -74,70 +220,68 @@ const closeMenu = () => {
   display: flex;
   flex-direction: column;
   min-height: 100vh;
+  position: relative;
 }
 
-.pro-navbar {
+.px-navbar {
   position: sticky;
-  top: 0;
+  top: 12px;
   z-index: 50;
-  background: rgba(43, 37, 99, 0.45);
-  backdrop-filter: blur(35px) saturate(200%);
-  -webkit-backdrop-filter: blur(35px) saturate(200%);
-  border-bottom: 1px solid rgba(185, 169, 232, 0.3);
-  padding: 8px 16px;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.15);
-}
-
-.nav-content {
+  height: var(--nav-h);
+  margin: 12px 16px 0;
+  padding: 0 18px;
   display: flex;
   justify-content: space-between;
-  align-items: center;
-}
-
-.nav-left {
-  display: flex;
   align-items: center;
   gap: 16px;
 }
 
-.logo-icon {
-  font-size: 2.2rem;
-  color: #B9A9E8;
+.nav-left,
+.nav-right {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-width: 0;
+}
+
+.logo-badge {
+  flex-shrink: 0;
+  background: var(--ink);
+  color: var(--on-ink);
+  border: 3px solid var(--ink);
+  box-shadow: 3px 3px 0 var(--shadow);
+  padding: 12px 8px;
+  font-family: 'Press Start 2P', monospace;
+  font-size: 0.65rem;
 }
 
 .doc-controls {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 2px;
+  min-width: 0;
 }
 
 .doc-title-input {
-  font-family: inherit;
-  font-size: 1.15rem;
-  font-weight: 500;
-  color: #ffffff;
+  width: min(340px, 42vw);
   background: transparent;
-  border: 1px solid transparent;
-  border-radius: 4px;
-  padding: 2px 6px;
-  width: 300px;
-  transition: all 0.2s ease;
-  outline: none;
+  color: var(--text);
+  border: 2px solid transparent;
+  padding: 0 6px;
   margin-left: -6px;
+  font-size: 1.6rem;
+  line-height: 1.2;
+  outline: none;
+  transition: background 0.15s, border-color 0.15s;
 }
 
 .doc-title-input:hover {
-  border-color: rgba(185, 169, 232, 0.4);
+  border-color: var(--accent-soft);
 }
 
 .doc-title-input:focus {
-  background: rgba(43, 37, 99, 0.6);
-  border-color: #B9A9E8;
-  box-shadow: 0 0 0 2px rgba(185, 169, 232, 0.3);
-}
-
-.doc-title-input::placeholder {
-  color: rgba(255, 255, 255, 0.5);
+  border-color: var(--ink);
+  background: var(--accent-soft);
 }
 
 .doc-menu {
@@ -152,91 +296,93 @@ const closeMenu = () => {
 
 .menu-item {
   background: transparent;
-  border: none;
-  color: #e2dcf5;
-  font-size: 0.85rem;
-  font-weight: 500;
-  padding: 4px 8px;
-  border-radius: 4px;
+  border: 2px solid transparent;
+  color: var(--text);
+  padding: 0 10px;
+  font-size: 1.15rem;
+  line-height: 1.4;
   cursor: pointer;
-  transition: background 0.15s, color 0.15s;
+  transition: background 0.15s;
 }
 
 .menu-item:hover {
-  background: rgba(185, 169, 232, 0.25);
-  color: #ffffff;
+  background: var(--accent-soft);
 }
 
-.dropdown-glass {
+.menu-item.abierto {
+  background: var(--ink);
+  color: var(--on-ink);
+}
+
+.px-dropdown {
   position: absolute;
   top: 100%;
   left: 0;
-  margin-top: 5px;
-  min-width: 220px;
-  background: rgba(43, 37, 99, 0.85);
-  backdrop-filter: blur(25px) saturate(180%);
-  -webkit-backdrop-filter: blur(25px) saturate(180%);
-  border: 1px solid rgba(185, 169, 232, 0.3);
-  border-radius: 8px;
-  padding: 6px 0;
-  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.3);
+  margin-top: 12px;
+  min-width: 270px;
+  padding: 8px;
   display: flex;
   flex-direction: column;
+  gap: 2px;
+  z-index: 60;
 }
 
 .dropdown-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 18px;
   background: transparent;
   border: none;
-  color: #ffffff;
+  color: var(--text);
   text-align: left;
-  padding: 8px 16px;
-  font-size: 0.9rem;
+  padding: 4px 10px;
+  font-size: 1.2rem;
   cursor: pointer;
-  transition: background 0.2s;
 }
 
 .dropdown-item:hover {
-  background: rgba(185, 169, 232, 0.2);
-  color: #B9A9E8;
+  background: var(--accent);
+  color: var(--on-accent);
 }
 
-.nav-right {
+.atajo {
+  font-size: 0.95rem;
+  opacity: 0.7;
+}
+
+.players {
   display: flex;
-  align-items: center;
-  gap: 20px;
+  padding-left: 6px;
 }
 
-.connected-users {
-  display: flex;
+.player {
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  margin-left: -6px;
+  border: 3px solid var(--ink);
+  box-shadow: 2px 2px 0 var(--shadow);
+  font-family: 'Press Start 2P', monospace;
+  font-size: 0.6rem;
 }
 
-.avatar {
-  width: 36px;
-  height: 36px;
-  border-radius: 50%;
-  border: 2px solid rgba(185, 169, 232, 0.5);
-  margin-left: -10px;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+.p1 {
+  background: var(--accent);
+  color: var(--on-accent);
 }
 
-.btn-share {
-  background: rgba(185, 169, 232, 0.8);
-  backdrop-filter: blur(10px);
-  color: #2B2563;
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  padding: 8px 20px;
-  border-radius: 24px;
-  font-weight: 600;
-  font-size: 0.9rem;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  box-shadow: 0 4px 12px rgba(43, 37, 99, 0.3);
+.p2 {
+  background: #2b2563;
+  color: #b9a9e8;
 }
 
-.btn-share:hover {
-  background: rgba(185, 169, 232, 1);
-  transform: translateY(-1px);
-  box-shadow: 0 6px 16px rgba(43, 37, 99, 0.5);
+.theme-btn {
+  width: 42px;
+  padding: 0;
+  font-family: 'VT323', monospace;
+  font-size: 1.6rem;
 }
 
 .main-content {
@@ -244,6 +390,34 @@ const closeMenu = () => {
   display: flex;
   flex-direction: column;
   align-items: center;
-  padding: 2rem 1rem;
+  padding: 1.5rem 1rem 3.5rem;
+}
+
+.toast {
+  position: fixed;
+  bottom: 28px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 300;
+  padding: 12px 18px;
+  font-family: 'Press Start 2P', monospace;
+  font-size: 0.6rem;
+  animation: pop 0.2s ease-out;
+}
+
+@media (max-width: 640px) {
+  .logo-badge,
+  .players {
+    display: none;
+  }
+
+  .doc-title-input {
+    width: 38vw;
+  }
+
+  .px-navbar {
+    margin: 8px 8px 0;
+    padding: 0 10px;
+  }
 }
 </style>
