@@ -1,86 +1,166 @@
 <template>
   <div
+    ref="filaRef"
     class="block-row"
-    :class="{ locked: bloqueadoPorOtro, editing: enfocado }"
+    :class="{
+      locked: bloqueadoPorOtro,
+      editing: enfocado,
+      'menu-open': menuVisible,
+      arrastrado,
+      'ind-arriba': indicador === 'arriba',
+      'ind-abajo': indicador === 'abajo'
+    }"
     :data-block-id="bloque.id"
+    :data-tipo="bloque.tipo"
+    :style="{ '--dueno': duenoColor || 'var(--ink)' }"
+    @dragover="alArrastrarSobre"
+    @drop="alSoltar"
   >
     <div class="block-controls no-print">
+      <span
+        class="handle"
+        :class="{ deshabilitado: bloqueadoPorOtro }"
+        :draggable="!bloqueadoPorOtro"
+        title="Arrastrar para mover"
+        aria-label="Arrastrar bloque"
+        @dragstart="alIniciarArrastre"
+        @dragend="$emit('drag-end')"
+      >
+        ⋮⋮
+      </span>
       <button type="button" title="Añadir bloque debajo" @click="$emit('add-block', index)">+</button>
-      <button
-        type="button"
-        title="Subir"
-        :disabled="isFirst || bloqueadoPorOtro"
-        @click="$emit('move-up', index)"
-      >
-        ▲
-      </button>
-      <button
-        type="button"
-        title="Bajar"
-        :disabled="isLast || bloqueadoPorOtro"
-        @click="$emit('move-down', index)"
-      >
-        ▼
-      </button>
-      <button
-        type="button"
-        class="danger"
-        title="Eliminar"
-        :disabled="bloqueadoPorOtro"
-        @click="$emit('delete-block', index)"
-      >
-        ×
-      </button>
+      <button type="button" class="danger" title="Eliminar" :disabled="bloqueadoPorOtro" @click="$emit('delete-block', index)">×</button>
+      <button type="button" title="Subir" :disabled="isFirst || bloqueadoPorOtro" @click="$emit('move-up', index)">▲</button>
+      <button type="button" title="Bajar" :disabled="isLast || bloqueadoPorOtro" @click="$emit('move-down', index)">▼</button>
     </div>
 
     <div class="block-main">
-      <span class="lock-badge no-print" v-if="bloqueadoPorOtro">BLOQUEADO · {{ quien }}</span>
-      <div
-        ref="editorRef"
-        class="rich-textarea"
-        :contenteditable="!bloqueadoPorOtro"
-        data-placeholder="Escribe aquí o pulsa Enter para crear otro bloque..."
-        spellcheck="true"
-        @focus="alEnfocar"
-        @blur="alDesenfocar"
-        @input="alEscribir"
-        @keydown="alPulsarTecla"
-        @paste="alPegar"
-      ></div>
+      <span class="lock-badge no-print" v-if="bloqueadoPorOtro" :style="{ background: duenoColor }">
+        BLOQUEADO · {{ duenoNombre || 'ALGUIEN' }}
+      </span>
+
+      <div class="block-body">
+        <span v-if="bloque.tipo === 'lista'" class="marcador cuadro" aria-hidden="true"></span>
+        <span v-else-if="bloque.tipo === 'numerada'" class="marcador numero" aria-hidden="true">{{ numero }}.</span>
+        <button
+          v-else-if="bloque.tipo === 'tarea'"
+          type="button"
+          role="checkbox"
+          class="marcador casilla"
+          :class="{ on: bloque.hecho }"
+          :aria-checked="bloque.hecho"
+          :disabled="bloqueadoPorOtro"
+          @mousedown.prevent
+          @click="$emit('toggle-hecho', index)"
+        >
+          <span v-if="bloque.hecho">✓</span>
+        </button>
+
+        <div v-if="bloque.tipo === 'divisor'" class="divisor" tabindex="0" role="separator" @keydown="alTeclaDivisor">
+          <i></i>
+        </div>
+
+        <div
+          ref="editorRef"
+          class="rich-textarea"
+          :class="{ hecho: bloque.tipo === 'tarea' && bloque.hecho }"
+          :contenteditable="editable"
+          :data-placeholder="placeholder"
+          :spellcheck="bloque.tipo !== 'codigo'"
+          @focus="alEnfocar"
+          @blur="alDesenfocar"
+          @input="alEscribir"
+          @keydown="alPulsarTecla"
+          @paste="alPegar"
+        ></div>
+      </div>
+
+      <div class="slash-menu px-panel no-print" v-if="menuVisible">
+        <div class="slash-titulo">BLOQUES</div>
+        <button
+          v-for="(tipo, i) in opciones"
+          :key="tipo.id"
+          type="button"
+          class="slash-item"
+          :class="{ activo: i === seleccion }"
+          @mousedown.prevent
+          @mouseenter="seleccion = i"
+          @click="elegirTipo(tipo.id)"
+        >
+          <span class="slash-icono">{{ tipo.icono }}</span>
+          <span class="slash-texto"><strong>{{ tipo.etiqueta }}</strong><small>{{ tipo.descripcion }}</small></span>
+        </button>
+      </div>
     </div>
   </div>
 </template>
 
 <script setup>
 import { ref, computed, watch, onMounted } from 'vue'
+import { TIPOS_CON_ENTER_BLOQUE, filtrarTipos } from '../utils/tipos'
 
 const props = defineProps({
   bloque: Object,
   index: Number,
   isFirst: Boolean,
   isLast: Boolean,
-  miSocketId: String
+  miSocketId: String,
+  numero: Number,
+  duenoNombre: String,
+  duenoColor: String,
+  indicador: String,
+  arrastrado: Boolean,
+  hayArrastre: Boolean
 })
 
 const emit = defineEmits([
   'add-block',
+  'enter-bloque',
   'delete-block',
   'delete-empty',
   'move-up',
   'move-down',
+  'move-key',
+  'navegar',
   'update-content',
   'solicitar-bloqueo',
-  'liberar-bloqueo'
+  'liberar-bloqueo',
+  'cambiar-tipo',
+  'toggle-hecho',
+  'drag-start',
+  'drag-over',
+  'drop-block',
+  'drag-end'
 ])
 
+const filaRef = ref(null)
 const editorRef = ref(null)
 const enfocado = ref(false)
+const menuAbierto = ref(false)
+const filtro = ref('')
+const seleccion = ref(0)
 
 const bloqueadoPorOtro = computed(
   () => !!props.bloque.bloqueadoPor && props.bloque.bloqueadoPor !== props.miSocketId
 )
 
-const quien = computed(() => String(props.bloque.bloqueadoPor || '').slice(0, 4).toUpperCase())
+const editable = computed(() => !bloqueadoPorOtro.value && props.bloque.tipo !== 'divisor')
+const opciones = computed(() => filtrarTipos(filtro.value))
+const menuVisible = computed(() => menuAbierto.value && opciones.value.length > 0)
+
+const placeholder = computed(
+  () =>
+    ({
+      h1: 'Título 1',
+      h2: 'Título 2',
+      h3: 'Título 3',
+      lista: 'Elemento de lista',
+      numerada: 'Elemento numerado',
+      tarea: 'Tarea pendiente',
+      cita: 'Escribe una cita...',
+      codigo: 'Escribe código...'
+    })[props.bloque.tipo] || "Escribe '/' para ver los bloques..."
+)
 
 onMounted(() => {
   if (editorRef.value) editorRef.value.innerHTML = props.bloque.contenido || ''
@@ -97,6 +177,12 @@ watch(
   }
 )
 
+const cerrarMenu = () => {
+  menuAbierto.value = false
+  filtro.value = ''
+  seleccion.value = 0
+}
+
 const alEnfocar = () => {
   enfocado.value = true
   if (!bloqueadoPorOtro.value) emit('solicitar-bloqueo', props.bloque.id)
@@ -104,27 +190,135 @@ const alEnfocar = () => {
 
 const alDesenfocar = () => {
   enfocado.value = false
+  cerrarMenu()
   if (!bloqueadoPorOtro.value) emit('liberar-bloqueo', props.bloque.id)
+}
+
+const revisarComando = (texto) => {
+  if (props.bloque.tipo === 'codigo' || !texto.startsWith('/') || texto.includes('\n')) {
+    cerrarMenu()
+    return
+  }
+  filtro.value = texto.slice(1).trim()
+  seleccion.value = 0
+  menuAbierto.value = true
 }
 
 const alEscribir = (e) => {
   const editor = e.target
   if (editor.innerHTML === '<br>') editor.innerHTML = ''
   emit('update-content', { id: props.bloque.id, contenido: editor.innerHTML })
+  revisarComando(editor.textContent)
 }
 
-const esVacio = () => !(editorRef.value && editorRef.value.textContent.length)
+const elegirTipo = (id) => {
+  if (editorRef.value) editorRef.value.innerHTML = ''
+  emit('update-content', { id: props.bloque.id, contenido: '' })
+  cerrarMenu()
+  emit('cambiar-tipo', { index: props.index, tipo: id })
+}
+
+const esVacio = () => {
+  const editor = editorRef.value
+  return !!editor && editor.textContent.length === 0 && editor.querySelectorAll('div, br').length === 0
+}
+
+const posicionLinea = () => {
+  const editor = editorRef.value
+  const seleccionActual = window.getSelection()
+  if (!editor || !seleccionActual || seleccionActual.rangeCount === 0 || !seleccionActual.isCollapsed) return null
+  const rango = seleccionActual.getRangeAt(0).cloneRange()
+  rango.collapse(true)
+  const rect = rango.getClientRects()[0]
+  if (!rect) return { primera: true, ultima: true }
+  const caja = editor.getBoundingClientRect()
+  const estilo = getComputedStyle(editor)
+  const alto = parseFloat(estilo.lineHeight) || rect.height
+  const arriba = rect.top - caja.top - parseFloat(estilo.paddingTop)
+  const abajo = caja.bottom - rect.bottom - parseFloat(estilo.paddingBottom)
+  return { primera: arriba < alto * 0.6, ultima: abajo < alto * 0.6 }
+}
 
 const alPulsarTecla = (e) => {
   if (e.isComposing) return
-  if (e.key === 'Enter' && !e.shiftKey) {
+  const tecla = e.key
+
+  if (menuVisible.value) {
+    if (tecla === 'ArrowDown') {
+      e.preventDefault()
+      seleccion.value = (seleccion.value + 1) % opciones.value.length
+      return
+    }
+    if (tecla === 'ArrowUp') {
+      e.preventDefault()
+      seleccion.value = (seleccion.value - 1 + opciones.value.length) % opciones.value.length
+      return
+    }
+    if (tecla === 'Enter' || tecla === 'Tab') {
+      e.preventDefault()
+      elegirTipo(opciones.value[seleccion.value].id)
+      return
+    }
+    if (tecla === 'Escape') {
+      e.preventDefault()
+      cerrarMenu()
+      return
+    }
+  }
+
+  if (e.altKey && (tecla === 'ArrowUp' || tecla === 'ArrowDown')) {
     e.preventDefault()
-    emit('add-block', props.index)
+    emit('move-key', { index: props.index, dir: tecla === 'ArrowUp' ? -1 : 1 })
     return
   }
-  if (e.key === 'Backspace' && esVacio()) {
+
+  if (tecla === 'Enter') {
+    if (e.ctrlKey || e.metaKey) {
+      e.preventDefault()
+      emit('add-block', props.index)
+      return
+    }
+    if (TIPOS_CON_ENTER_BLOQUE.includes(props.bloque.tipo) && !e.shiftKey) {
+      e.preventDefault()
+      emit('enter-bloque', props.index)
+      return
+    }
+    if (props.bloque.tipo === 'codigo' || e.shiftKey) {
+      e.preventDefault()
+      document.execCommand('insertLineBreak')
+    }
+    return
+  }
+
+  if (tecla === 'Backspace' && esVacio()) {
     e.preventDefault()
     emit('delete-empty', props.index)
+    return
+  }
+
+  if ((tecla === 'ArrowUp' || tecla === 'ArrowDown') && !e.shiftKey && !e.ctrlKey && !e.metaKey && !e.altKey) {
+    const posicion = posicionLinea()
+    if (!posicion) return
+    if (tecla === 'ArrowUp' && posicion.primera) {
+      e.preventDefault()
+      emit('navegar', { index: props.index, dir: -1 })
+    } else if (tecla === 'ArrowDown' && posicion.ultima) {
+      e.preventDefault()
+      emit('navegar', { index: props.index, dir: 1 })
+    }
+  }
+}
+
+const alTeclaDivisor = (e) => {
+  if (e.key === 'Backspace' || e.key === 'Delete') {
+    e.preventDefault()
+    emit('delete-block', props.index)
+  } else if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+    e.preventDefault()
+    emit('navegar', { index: props.index, dir: e.key === 'ArrowUp' ? -1 : 1 })
+  } else if (e.key === 'Enter') {
+    e.preventDefault()
+    emit('add-block', props.index)
   }
 }
 
@@ -134,20 +328,73 @@ const alPegar = (e) => {
   const texto = datos ? datos.getData('text/plain') : ''
   document.execCommand('insertText', false, texto)
 }
+
+const alIniciarArrastre = (e) => {
+  if (bloqueadoPorOtro.value) {
+    e.preventDefault()
+    return
+  }
+  e.dataTransfer.effectAllowed = 'move'
+  e.dataTransfer.setData('text/plain', String(props.bloque.id))
+  if (filaRef.value) e.dataTransfer.setDragImage(filaRef.value, 24, 16)
+  emit('drag-start', props.index)
+}
+
+const alArrastrarSobre = (e) => {
+  if (!props.hayArrastre) return
+  e.preventDefault()
+  e.dataTransfer.dropEffect = 'move'
+  const caja = filaRef.value.getBoundingClientRect()
+  emit('drag-over', { index: props.index, despues: e.clientY > caja.top + caja.height / 2 })
+}
+
+const alSoltar = (e) => {
+  if (!props.hayArrastre) return
+  e.preventDefault()
+  emit('drop-block')
+}
 </script>
 
 <style scoped>
 .block-row {
   position: relative;
   display: grid;
-  grid-template-columns: 70px 1fr;
+  grid-template-columns: 94px 1fr;
   align-items: start;
   margin-bottom: 8px;
 }
 
+.block-row.menu-open {
+  z-index: 30;
+}
+
+.block-row.arrastrado {
+  opacity: 0.35;
+}
+
+.block-row.ind-arriba::before,
+.block-row.ind-abajo::after {
+  content: '';
+  position: absolute;
+  left: 94px;
+  right: 0;
+  height: 4px;
+  z-index: 5;
+  background: var(--ink);
+  box-shadow: 0 0 10px var(--accent);
+}
+
+.block-row.ind-arriba::before {
+  top: -6px;
+}
+
+.block-row.ind-abajo::after {
+  bottom: -6px;
+}
+
 .block-controls {
   display: grid;
-  grid-template-columns: repeat(2, 26px);
+  grid-template-columns: repeat(3, 26px);
   gap: 3px;
   justify-content: end;
   padding: 4px 8px 0 0;
@@ -172,7 +419,8 @@ const alPegar = (e) => {
   }
 }
 
-.block-controls button {
+.block-controls button,
+.handle {
   width: 26px;
   height: 26px;
   display: grid;
@@ -188,7 +436,20 @@ const alPegar = (e) => {
   transition: transform 0.06s, box-shadow 0.06s, background 0.15s;
 }
 
-.block-controls button:hover:not(:disabled) {
+.handle {
+  cursor: grab;
+  letter-spacing: -2px;
+  user-select: none;
+}
+
+.handle.deshabilitado {
+  opacity: 0.25;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+.block-controls button:hover:not(:disabled),
+.handle:hover:not(.deshabilitado) {
   background: var(--accent);
   color: var(--on-accent);
 }
@@ -214,7 +475,14 @@ const alPegar = (e) => {
   min-width: 0;
 }
 
+.block-body {
+  display: flex;
+  align-items: flex-start;
+}
+
 .rich-textarea {
+  flex: 1;
+  min-width: 0;
   min-height: 1.75em;
   padding: 6px 12px;
   background: transparent;
@@ -240,7 +508,7 @@ const alPegar = (e) => {
 }
 
 .block-row.locked .rich-textarea {
-  border: 2px dashed var(--ink);
+  border: 2px dashed var(--dueno);
   background: repeating-linear-gradient(135deg, var(--hover) 0 6px, transparent 6px 12px);
   opacity: 0.7;
   cursor: not-allowed;
@@ -253,16 +521,122 @@ const alPegar = (e) => {
   pointer-events: none;
 }
 
+.rich-textarea.hecho {
+  text-decoration: line-through;
+  opacity: 0.55;
+}
+
+.block-row[data-tipo='h1'] .rich-textarea {
+  padding-top: 14px;
+  padding-bottom: 8px;
+  font-family: 'Press Start 2P', monospace;
+  font-size: 1.15rem;
+  line-height: 1.7;
+}
+
+.block-row[data-tipo='h2'] .rich-textarea {
+  padding-top: 10px;
+  font-family: 'Press Start 2P', monospace;
+  font-size: 0.95rem;
+  line-height: 1.7;
+}
+
+.block-row[data-tipo='h3'] .rich-textarea {
+  padding-top: 8px;
+  font-family: 'Press Start 2P', monospace;
+  font-size: 0.8rem;
+  line-height: 1.8;
+}
+
+.block-row[data-tipo='cita'] .rich-textarea {
+  padding-left: 16px;
+  border-left: 5px solid var(--accent);
+  background: var(--hover);
+  font-style: italic;
+}
+
+.block-row[data-tipo='codigo'] .rich-textarea {
+  background: var(--panel);
+  border: 2px solid var(--ink);
+  font-size: 0.88rem;
+  white-space: pre-wrap;
+}
+
+.block-row[data-tipo='divisor'] .rich-textarea {
+  display: none;
+}
+
+.marcador {
+  flex-shrink: 0;
+}
+
+.cuadro {
+  width: 8px;
+  height: 8px;
+  margin: 17px 8px 0 12px;
+  background: var(--ink);
+}
+
+.numero {
+  min-width: 26px;
+  margin: 8px 4px 0 8px;
+  color: var(--ink);
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 1rem;
+  line-height: 1.75;
+  text-align: right;
+}
+
+.casilla {
+  width: 22px;
+  height: 22px;
+  display: grid;
+  place-items: center;
+  margin: 11px 6px 0 10px;
+  padding: 0;
+  background: var(--sheet);
+  color: var(--on-ink);
+  border: 3px solid var(--ink);
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+
+.casilla.on {
+  background: var(--ink);
+}
+
+.casilla:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.divisor {
+  flex: 1;
+  padding: 14px 12px;
+  outline: none;
+}
+
+.divisor i {
+  display: block;
+  height: 4px;
+  background: repeating-linear-gradient(90deg, var(--ink) 0 8px, transparent 8px 14px);
+}
+
+.divisor:focus-visible {
+  outline: 2px dashed var(--ink);
+  outline-offset: -2px;
+}
+
 .lock-badge {
   position: absolute;
   top: -11px;
   right: 10px;
   z-index: 2;
   padding: 4px 8px;
-  background: var(--ink);
-  color: var(--on-ink);
+  color: #1b1740;
   font-family: 'Press Start 2P', monospace;
   font-size: 0.5rem;
+  text-transform: uppercase;
 }
 
 .lock-badge::after {
@@ -271,9 +645,82 @@ const alPegar = (e) => {
   animation: parpadeo 1s steps(2) infinite;
 }
 
+.slash-menu {
+  position: absolute;
+  left: 0;
+  top: calc(100% + 6px);
+  z-index: 40;
+  width: min(330px, 100%);
+  max-height: 330px;
+  overflow-y: auto;
+  padding: 6px;
+}
+
+.slash-titulo {
+  padding: 6px 8px;
+  color: var(--muted);
+  font-family: 'Press Start 2P', monospace;
+  font-size: 0.5rem;
+}
+
+.slash-item {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 8px;
+  background: transparent;
+  border: none;
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+}
+
+.slash-item.activo {
+  background: var(--accent);
+  color: var(--on-accent);
+}
+
+.slash-icono {
+  min-width: 36px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  border: 2px solid currentColor;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.slash-texto strong {
+  display: block;
+  font-size: 1.2rem;
+  font-weight: 400;
+  line-height: 1;
+}
+
+.slash-texto small {
+  display: block;
+  font-size: 1rem;
+  opacity: 0.7;
+}
+
 @media (max-width: 640px) {
   .block-row {
     grid-template-columns: 62px 1fr;
+  }
+
+  .block-row.ind-arriba::before,
+  .block-row.ind-abajo::after {
+    left: 62px;
+  }
+
+  .block-controls {
+    grid-template-columns: repeat(2, 26px);
+  }
+
+  .handle {
+    display: none;
   }
 }
 </style>

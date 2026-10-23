@@ -1,113 +1,174 @@
 <template>
-  <div class="app-wrapper" @click="cerrarMenu">
-    <header class="px-navbar px-panel no-print" @click.stop>
-      <div class="nav-left">
-        <div class="logo-badge">DOC</div>
-        <div class="doc-controls">
-          <input
-            v-model="tituloDocumento"
-            class="doc-title-input"
-            type="text"
-            maxlength="60"
-            placeholder="Documento sin título"
-          />
-          <nav class="doc-menu">
-            <div class="menu-container" v-for="menu in menus" :key="menu.nombre">
-              <button
-                class="menu-item"
-                :class="{ abierto: menuActivo === menu.nombre }"
-                @mousedown.prevent
-                @click="alternarMenu(menu.nombre)"
-              >
-                {{ menu.nombre }}
-              </button>
-              <div class="px-dropdown px-panel" v-if="menuActivo === menu.nombre">
+  <div class="app-wrapper" :class="{ zen: sesion.zen }" @click="cerrarMenu">
+    <div class="cabecera no-print" v-show="!sesion.zen">
+      <header class="px-navbar px-panel" @click.stop>
+        <div class="nav-left">
+          <div class="logo-badge">DOC</div>
+          <div class="doc-controls">
+            <input
+              v-model="sesion.titulo"
+              class="doc-title-input"
+              type="text"
+              maxlength="80"
+              placeholder="Documento sin título"
+            />
+            <nav class="doc-menu">
+              <div class="menu-container" v-for="menu in menus" :key="menu.nombre">
                 <button
-                  class="dropdown-item"
-                  v-for="opcion in menu.opciones"
-                  :key="opcion.etiqueta"
+                  class="menu-item"
+                  :class="{ abierto: menuActivo === menu.nombre }"
                   @mousedown.prevent
-                  @click="ejecutarAccion(opcion.accion)"
+                  @click="alternarMenu(menu.nombre)"
                 >
-                  <span>{{ opcion.etiqueta }}</span>
-                  <span class="atajo" v-if="opcion.atajo">{{ opcion.atajo }}</span>
+                  {{ menu.nombre }}
                 </button>
+                <div class="px-dropdown px-panel" v-if="menuActivo === menu.nombre">
+                  <template v-for="(opcion, i) in menu.opciones" :key="i">
+                    <div v-if="opcion.separador" class="separador"></div>
+                    <button v-else class="dropdown-item" @mousedown.prevent @click="ejecutarAccion(opcion.accion)">
+                      <span>{{ opcion.etiqueta }}</span>
+                      <span class="atajo" v-if="opcion.atajo">{{ opcion.atajo }}</span>
+                    </button>
+                  </template>
+                </div>
               </div>
-            </div>
-          </nav>
+            </nav>
+          </div>
         </div>
-      </div>
 
-      <div class="nav-right">
-        <div class="players">
-          <div class="player p1" title="Juan">J</div>
-          <div class="player p2" title="Nicolas">N</div>
+        <div class="nav-right">
+          <button class="players" title="Quién está en el documento" @click="modal = 'compartir'">
+            <span
+              v-for="u in visibles"
+              :key="u.id"
+              class="player"
+              :class="{ yo: esYo(u) }"
+              :style="{ background: u.color }"
+              :title="`${u.nombre} #${u.uid || ''}`"
+            >
+              {{ inicial(u.nombre) }}
+            </span>
+            <span v-if="extra > 0" class="player mas">+{{ extra }}</span>
+          </button>
+          <button
+            class="px-btn icono-btn"
+            :class="{ apagado: !sesion.sonido }"
+            :title="sesion.sonido ? 'Silenciar sonidos' : 'Activar sonidos'"
+            @click="alternarSonido"
+          >
+            ♪
+          </button>
+          <button
+            class="px-btn icono-btn"
+            :title="sesion.tema === 'dark' ? 'Cambiar a modo claro' : 'Cambiar a modo oscuro'"
+            @click="alternarTema"
+          >
+            {{ sesion.tema === 'dark' ? '☀' : '☾' }}
+          </button>
+          <button class="px-btn primary" @click="modal = 'compartir'">COMPARTIR</button>
         </div>
-        <button
-          class="px-btn theme-btn"
-          :title="tema === 'dark' ? 'Cambiar a modo claro' : 'Cambiar a modo oscuro'"
-          @click="alternarTema"
-        >
-          {{ tema === 'dark' ? '☀' : '☾' }}
-        </button>
-        <button class="px-btn primary" @click="ejecutarAccion('compartir')">COMPARTIR</button>
-      </div>
-    </header>
+      </header>
+
+      <BarraFormato />
+    </div>
+
+    <button v-if="sesion.zen" class="px-btn zen-salir no-print" @click="alternarZen">SALIR DEL MODO ENFOQUE</button>
 
     <main class="main-content">
       <slot></slot>
     </main>
 
-    <div class="toast px-panel no-print" v-if="aviso">{{ aviso }}</div>
+    <div class="toast px-panel no-print" v-if="sesion.aviso">{{ sesion.aviso }}</div>
+
+    <div class="modal-fondo no-print" v-if="modal === 'compartir'" @click.self="modal = null">
+      <div class="modal px-panel" role="dialog" aria-label="Compartir documento">
+        <div class="modal-cabecera">
+          <span>COMPARTIR</span>
+          <button class="px-btn" @click="modal = null">X</button>
+        </div>
+        <p class="modal-texto">
+          Quien abra este enlace entra al mismo documento y se identifica con su nombre y su ID única.
+        </p>
+        <div class="campo-copia">
+          <input readonly :value="enlace" @focus="$event.target.select()" />
+          <button class="px-btn primary" @click="copiarEnlace">COPIAR</button>
+        </div>
+        <div class="codigo-doc">CÓDIGO DEL DOCUMENTO <strong>{{ sesion.documentoId }}</strong></div>
+        <h3 class="modal-sub">EN ESTE DOCUMENTO ({{ jugadores.length }})</h3>
+        <ul class="lista-personas">
+          <li v-for="u in jugadores" :key="u.id">
+            <span class="chip" :style="{ background: u.color }">{{ inicial(u.nombre) }}</span>
+            <span class="nombre">{{ u.nombre }}<em v-if="esYo(u)"> (tú)</em></span>
+            <code>#{{ u.uid || '------' }}</code>
+          </li>
+        </ul>
+        <p class="modal-nota" v-if="jugadores.length === 1">Por ahora estás solo. Comparte el enlace para trabajar en conjunto.</p>
+      </div>
+    </div>
+
+    <div class="modal-fondo no-print" v-if="modal === 'atajos'" @click.self="modal = null">
+      <div class="modal px-panel" role="dialog" aria-label="Atajos de teclado">
+        <div class="modal-cabecera">
+          <span>ATAJOS</span>
+          <button class="px-btn" @click="modal = null">X</button>
+        </div>
+        <ul class="atajos-lista">
+          <li v-for="a in atajos" :key="a[0]"><kbd>{{ a[0] }}</kbd><span>{{ a[1] }}</span></li>
+        </ul>
+      </div>
+    </div>
   </div>
 </template>
 
 <script setup>
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
+import BarraFormato from '../components/BarraFormato.vue'
+import {
+  sesion,
+  alternarTema,
+  alternarCrt,
+  alternarSonido,
+  alternarZen,
+  cambiarJugador,
+  crearDocumentoNuevo,
+  enlaceDocumento,
+  avisar
+} from '../stores/sesion'
 
-const leerAlmacen = (clave, defecto) => {
-  try {
-    return localStorage.getItem(clave) || defecto
-  } catch {
-    return defecto
-  }
-}
-
-const guardarAlmacen = (clave, valor) => {
-  try {
-    localStorage.setItem(clave, valor)
-  } catch {
-    return
-  }
-}
-
-const prefiereOscuro = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches
-
-const tema = ref(leerAlmacen('editor-tema', prefiereOscuro ? 'dark' : 'light'))
-const crt = ref(leerAlmacen('editor-crt', 'on'))
-const tituloDocumento = ref(leerAlmacen('editor-titulo', 'Estructura Editor Colaborativo'))
 const menuActivo = ref(null)
-const aviso = ref('')
-let temporizadorAviso = null
+const modal = ref(null)
 
-document.documentElement.dataset.theme = tema.value
-document.documentElement.dataset.crt = crt.value
+const atajos = [
+  ['/', 'Abrir el menú de bloques'],
+  ['Enter', 'Salto de línea (en títulos y listas crea el siguiente bloque)'],
+  ['Ctrl + Enter', 'Nuevo bloque debajo'],
+  ['Shift + Enter', 'Salto de línea sin crear párrafo'],
+  ['Backspace', 'En un bloque vacío: volver a texto o eliminarlo'],
+  ['Alt + ↑ / ↓', 'Mover el bloque'],
+  ['↑ / ↓', 'Saltar entre bloques desde el borde'],
+  ['Ctrl + Z / Ctrl + Y', 'Deshacer / rehacer'],
+  ['Ctrl + B / I / U', 'Negrita / cursiva / subrayado'],
+  ['Ctrl + .', 'Modo enfoque'],
+  ['Esc', 'Cerrar menús o salir del enfoque']
+]
 
-watch(tema, (valor) => {
-  document.documentElement.dataset.theme = valor
-  guardarAlmacen('editor-tema', valor)
-})
+const enlace = computed(() => enlaceDocumento())
 
-watch(crt, (valor) => {
-  document.documentElement.dataset.crt = valor
-  guardarAlmacen('editor-crt', valor)
-})
+const jugadores = computed(() =>
+  sesion.usuarios.length
+    ? sesion.usuarios
+    : [{ id: 'yo', uid: sesion.uid, nombre: sesion.nombre, color: sesion.color }]
+)
+
+const visibles = computed(() => jugadores.value.slice(0, 4))
+const extra = computed(() => Math.max(0, jugadores.value.length - 4))
+const esYo = (u) => u.id === 'yo' || u.id === sesion.miId || u.uid === sesion.uid
+const inicial = (nombre) => (String(nombre || '?').trim()[0] || '?').toUpperCase()
 
 watch(
-  tituloDocumento,
+  () => sesion.titulo,
   (valor) => {
-    guardarAlmacen('editor-titulo', valor)
-    document.title = `${valor.trim() || 'Documento sin título'} · Editor_Docs`
+    document.title = `${(valor || '').trim() || 'Documento sin título'} · Editor_Docs`
   },
   { immediate: true }
 )
@@ -117,9 +178,16 @@ const menus = computed(() => [
     nombre: 'Archivo',
     opciones: [
       { etiqueta: 'Nuevo documento', accion: 'nuevo' },
-      { etiqueta: 'Descargar como .txt', accion: 'txt' },
-      { etiqueta: 'Descargar como .html', accion: 'html' },
-      { etiqueta: 'Imprimir / Guardar PDF', accion: 'imprimir', atajo: 'Ctrl+P' }
+      { separador: true },
+      { etiqueta: 'Descargar como PDF', accion: 'pdf' },
+      { etiqueta: 'Descargar como Word (.docx)', accion: 'docx' },
+      { etiqueta: 'Descargar como texto (.txt)', accion: 'txt' },
+      { etiqueta: 'Descargar como Markdown (.md)', accion: 'md' },
+      { etiqueta: 'Descargar como página web (.html)', accion: 'html' },
+      { separador: true },
+      { etiqueta: 'Imprimir', accion: 'imprimir', atajo: 'Ctrl+P' },
+      { separador: true },
+      { etiqueta: 'Cambiar jugador', accion: 'jugador' }
     ]
   },
   {
@@ -127,6 +195,7 @@ const menus = computed(() => [
     opciones: [
       { etiqueta: 'Deshacer', accion: 'undo', atajo: 'Ctrl+Z' },
       { etiqueta: 'Rehacer', accion: 'redo', atajo: 'Ctrl+Y' },
+      { separador: true },
       { etiqueta: 'Cortar', accion: 'cut', atajo: 'Ctrl+X' },
       { etiqueta: 'Copiar', accion: 'copy', atajo: 'Ctrl+C' },
       { etiqueta: 'Seleccionar todo', accion: 'selectAll', atajo: 'Ctrl+A' }
@@ -135,10 +204,17 @@ const menus = computed(() => [
   {
     nombre: 'Ver',
     opciones: [
+      { etiqueta: 'Modo enfoque', accion: 'zen', atajo: 'Ctrl+.' },
       { etiqueta: 'Pantalla completa', accion: 'fullscreen' },
-      { etiqueta: tema.value === 'dark' ? 'Cambiar a modo claro' : 'Cambiar a modo oscuro', accion: 'tema' },
-      { etiqueta: crt.value === 'on' ? 'Desactivar efecto CRT' : 'Activar efecto CRT', accion: 'crt' }
+      { separador: true },
+      { etiqueta: sesion.tema === 'dark' ? 'Cambiar a modo claro' : 'Cambiar a modo oscuro', accion: 'tema' },
+      { etiqueta: sesion.crt === 'on' ? 'Desactivar efecto CRT' : 'Activar efecto CRT', accion: 'crt' },
+      { etiqueta: sesion.sonido ? 'Silenciar sonidos' : 'Activar sonidos', accion: 'sonido' }
     ]
+  },
+  {
+    nombre: 'Ayuda',
+    opciones: [{ etiqueta: 'Atajos de teclado', accion: 'atajos' }]
   }
 ])
 
@@ -150,69 +226,62 @@ const cerrarMenu = () => {
   menuActivo.value = null
 }
 
-const alternarTema = () => {
-  tema.value = tema.value === 'dark' ? 'light' : 'dark'
-}
-
-const mostrarAviso = (texto) => {
-  aviso.value = texto
-  clearTimeout(temporizadorAviso)
-  temporizadorAviso = setTimeout(() => {
-    aviso.value = ''
-  }, 2200)
-}
-
-const compartir = async () => {
+const copiarEnlace = async () => {
   try {
-    await navigator.clipboard.writeText(window.location.href)
-    mostrarAviso('ENLACE COPIADO')
+    await navigator.clipboard.writeText(enlace.value)
+    avisar('ENLACE COPIADO')
   } catch {
-    mostrarAviso('NO SE PUDO COPIAR')
+    avisar('NO SE PUDO COPIAR')
   }
 }
 
 const ejecutarAccion = (accion) => {
   cerrarMenu()
-
-  if (['undo', 'redo', 'cut', 'copy', 'selectAll'].includes(accion)) {
+  if (['cut', 'copy', 'selectAll'].includes(accion)) {
     document.execCommand(accion, false, null)
+  } else if (accion === 'undo') {
+    window.dispatchEvent(new CustomEvent('deshacer-documento'))
+  } else if (accion === 'redo') {
+    window.dispatchEvent(new CustomEvent('rehacer-documento'))
+  } else if (['pdf', 'docx', 'txt', 'md', 'html'].includes(accion)) {
+    window.dispatchEvent(new CustomEvent('exportar-documento', { detail: { formato: accion } }))
   } else if (accion === 'imprimir') {
     window.print()
-  } else if (accion === 'fullscreen') {
-    if (!document.fullscreenElement) {
-      document.documentElement.requestFullscreen()
-    } else {
-      document.exitFullscreen()
-    }
   } else if (accion === 'nuevo') {
-    if (window.confirm('¿Crear un documento nuevo? Se borrará el contenido actual.')) {
-      window.dispatchEvent(new CustomEvent('limpiar-documento'))
-    }
-  } else if (accion === 'txt' || accion === 'html') {
-    window.dispatchEvent(
-      new CustomEvent('exportar-documento', {
-        detail: { formato: accion, titulo: tituloDocumento.value }
-      })
-    )
+    crearDocumentoNuevo()
+  } else if (accion === 'jugador') {
+    cambiarJugador()
+  } else if (accion === 'zen') {
+    alternarZen()
+  } else if (accion === 'fullscreen') {
+    if (!document.fullscreenElement) document.documentElement.requestFullscreen()
+    else document.exitFullscreen()
   } else if (accion === 'tema') {
     alternarTema()
   } else if (accion === 'crt') {
-    crt.value = crt.value === 'on' ? 'off' : 'on'
-  } else if (accion === 'compartir') {
-    compartir()
+    alternarCrt()
+  } else if (accion === 'sonido') {
+    alternarSonido()
+  } else if (accion === 'atajos') {
+    modal.value = 'atajos'
   }
 }
 
 const alTeclear = (e) => {
-  if (e.key === 'Escape') cerrarMenu()
+  if (e.key === 'Escape') {
+    if (modal.value) modal.value = null
+    else if (sesion.zen) alternarZen()
+    else cerrarMenu()
+    return
+  }
+  if ((e.ctrlKey || e.metaKey) && e.key === '.') {
+    e.preventDefault()
+    alternarZen()
+  }
 }
 
 onMounted(() => window.addEventListener('keydown', alTeclear))
-
-onUnmounted(() => {
-  window.removeEventListener('keydown', alTeclear)
-  clearTimeout(temporizadorAviso)
-})
+onUnmounted(() => window.removeEventListener('keydown', alTeclear))
 </script>
 
 <style scoped>
@@ -223,34 +292,43 @@ onUnmounted(() => {
   position: relative;
 }
 
-.px-navbar {
+.cabecera {
   position: sticky;
-  top: 12px;
+  top: 0;
   z-index: 50;
-  height: var(--nav-h);
-  margin: 12px 16px 0;
-  padding: 0 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px 16px 14px;
+  background: var(--bg);
+  background: color-mix(in srgb, var(--bg) 86%, transparent);
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
+}
+
+.px-navbar {
   display: flex;
   justify-content: space-between;
   align-items: center;
   gap: 16px;
+  padding: 8px 18px;
 }
 
 .nav-left,
 .nav-right {
   display: flex;
   align-items: center;
-  gap: 14px;
+  gap: 12px;
   min-width: 0;
 }
 
 .logo-badge {
   flex-shrink: 0;
+  padding: 12px 8px;
   background: var(--ink);
   color: var(--on-ink);
   border: 3px solid var(--ink);
   box-shadow: 3px 3px 0 var(--shadow);
-  padding: 12px 8px;
   font-family: 'Press Start 2P', monospace;
   font-size: 0.65rem;
 }
@@ -263,13 +341,13 @@ onUnmounted(() => {
 }
 
 .doc-title-input {
-  width: min(340px, 42vw);
+  width: min(340px, 40vw);
+  margin-left: -6px;
+  padding: 0 6px;
   background: transparent;
   color: var(--text);
   border: 2px solid transparent;
-  padding: 0 6px;
-  margin-left: -6px;
-  font-size: 1.6rem;
+  font-size: 1.55rem;
   line-height: 1.2;
   outline: none;
   transition: background 0.15s, border-color 0.15s;
@@ -295,14 +373,13 @@ onUnmounted(() => {
 }
 
 .menu-item {
+  padding: 0 10px;
   background: transparent;
   border: 2px solid transparent;
   color: var(--text);
-  padding: 0 10px;
   font-size: 1.15rem;
   line-height: 1.4;
   cursor: pointer;
-  transition: background 0.15s;
 }
 
 .menu-item:hover {
@@ -318,13 +395,13 @@ onUnmounted(() => {
   position: absolute;
   top: 100%;
   left: 0;
+  z-index: 60;
+  min-width: 290px;
   margin-top: 12px;
-  min-width: 270px;
   padding: 8px;
   display: flex;
   flex-direction: column;
   gap: 2px;
-  z-index: 60;
 }
 
 .dropdown-item {
@@ -332,18 +409,24 @@ onUnmounted(() => {
   justify-content: space-between;
   align-items: center;
   gap: 18px;
+  padding: 4px 10px;
   background: transparent;
   border: none;
   color: var(--text);
-  text-align: left;
-  padding: 4px 10px;
   font-size: 1.2rem;
+  text-align: left;
   cursor: pointer;
 }
 
 .dropdown-item:hover {
   background: var(--accent);
   color: var(--on-accent);
+}
+
+.separador {
+  height: 2px;
+  margin: 4px 6px;
+  background: var(--accent-soft);
 }
 
 .atajo {
@@ -353,7 +436,10 @@ onUnmounted(() => {
 
 .players {
   display: flex;
-  padding-left: 6px;
+  padding: 4px 6px 4px 12px;
+  background: transparent;
+  border: none;
+  cursor: pointer;
 }
 
 .player {
@@ -364,25 +450,31 @@ onUnmounted(() => {
   margin-left: -6px;
   border: 3px solid var(--ink);
   box-shadow: 2px 2px 0 var(--shadow);
+  color: #1b1740;
   font-family: 'Press Start 2P', monospace;
   font-size: 0.6rem;
 }
 
-.p1 {
-  background: var(--accent);
-  color: var(--on-accent);
+.player.yo {
+  outline: 2px solid var(--text);
+  outline-offset: 1px;
 }
 
-.p2 {
-  background: #2b2563;
-  color: #b9a9e8;
+.player.mas {
+  background: var(--panel);
+  color: var(--text);
 }
 
-.theme-btn {
+.icono-btn {
   width: 42px;
   padding: 0;
   font-family: 'VT323', monospace;
   font-size: 1.6rem;
+}
+
+.icono-btn.apagado {
+  opacity: 0.5;
+  text-decoration: line-through;
 }
 
 .main-content {
@@ -390,19 +482,161 @@ onUnmounted(() => {
   display: flex;
   flex-direction: column;
   align-items: center;
-  padding: 1.5rem 1rem 3.5rem;
+  padding: 1.25rem 1rem 3.5rem;
+}
+
+.zen-salir {
+  position: fixed;
+  top: 14px;
+  right: 14px;
+  z-index: 60;
 }
 
 .toast {
   position: fixed;
   bottom: 28px;
   left: 50%;
-  transform: translateX(-50%);
   z-index: 300;
+  transform: translateX(-50%);
   padding: 12px 18px;
   font-family: 'Press Start 2P', monospace;
   font-size: 0.6rem;
   animation: pop 0.2s ease-out;
+}
+
+.modal-fondo {
+  position: fixed;
+  inset: 0;
+  z-index: 120;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgba(5, 5, 5, 0.55);
+}
+
+.modal {
+  width: min(520px, 100%);
+  max-height: 90vh;
+  overflow-y: auto;
+  padding: 20px 22px 24px;
+}
+
+.modal-cabecera {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 14px;
+  font-family: 'Press Start 2P', monospace;
+  font-size: 0.7rem;
+}
+
+.modal-texto,
+.modal-nota {
+  margin: 0 0 14px;
+  color: var(--muted);
+  line-height: 1.2;
+}
+
+.campo-copia {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.campo-copia input {
+  flex: 1;
+  min-width: 0;
+  height: 40px;
+  padding: 0 10px;
+  background: var(--sheet);
+  color: var(--text);
+  border: 3px solid var(--ink);
+  font-size: 1.1rem;
+  outline: none;
+}
+
+.codigo-doc {
+  margin-bottom: 16px;
+  font-family: 'Press Start 2P', monospace;
+  font-size: 0.5rem;
+  color: var(--muted);
+}
+
+.codigo-doc strong {
+  margin-left: 8px;
+  padding: 3px 8px;
+  background: var(--ink);
+  color: var(--on-ink);
+}
+
+.modal-sub {
+  margin: 0 0 8px;
+  font-family: 'Press Start 2P', monospace;
+  font-size: 0.55rem;
+  font-weight: 400;
+}
+
+.lista-personas,
+.atajos-lista {
+  margin: 0 0 12px;
+  padding: 0;
+  list-style: none;
+}
+
+.lista-personas li {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 7px 0;
+  border-bottom: 2px dashed var(--accent-soft);
+}
+
+.chip {
+  width: 30px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  border: 3px solid var(--ink);
+  color: #1b1740;
+  font-family: 'Press Start 2P', monospace;
+  font-size: 0.55rem;
+}
+
+.nombre {
+  flex: 1;
+  font-size: 1.3rem;
+}
+
+.nombre em {
+  color: var(--muted);
+  font-style: normal;
+}
+
+.lista-personas code {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+.atajos-lista li {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 6px 0;
+  border-bottom: 2px dashed var(--accent-soft);
+}
+
+.atajos-lista kbd {
+  min-width: 150px;
+  padding: 3px 8px;
+  background: var(--ink);
+  color: var(--on-ink);
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 0.78rem;
+}
+
+.atajos-lista span {
+  line-height: 1.1;
 }
 
 @media (max-width: 640px) {
@@ -412,12 +646,15 @@ onUnmounted(() => {
   }
 
   .doc-title-input {
-    width: 38vw;
+    width: 36vw;
+  }
+
+  .cabecera {
+    padding: 8px 8px 10px;
   }
 
   .px-navbar {
-    margin: 8px 8px 0;
-    padding: 0 10px;
+    padding: 6px 10px;
   }
 }
 </style>

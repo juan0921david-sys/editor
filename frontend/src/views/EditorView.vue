@@ -1,54 +1,17 @@
 <template>
   <div class="editor-container">
-    <div class="px-toolbar px-panel no-print">
-      <button class="tool-btn" title="Deshacer (Ctrl+Z)" @mousedown.prevent="aplicarFormato('undo')">↶</button>
-      <button class="tool-btn" title="Rehacer (Ctrl+Y)" @mousedown.prevent="aplicarFormato('redo')">↷</button>
-
-      <span class="divider"></span>
-
-      <button
-        v-for="formato in formatos"
-        :key="formato.comando"
-        :class="['tool-btn', formato.clase, { on: activos[formato.comando] }]"
-        :title="formato.titulo"
-        @mousedown.prevent="aplicarFormato(formato.comando)"
-      >
-        {{ formato.etiqueta }}
-      </button>
-
-      <span class="divider"></span>
-
-      <button
-        v-for="alineacion in alineaciones"
-        :key="alineacion.comando"
-        :class="['tool-btn', { on: activos[alineacion.comando] }]"
-        :title="alineacion.titulo"
-        @mousedown.prevent="aplicarFormato(alineacion.comando)"
-      >
-        <svg viewBox="0 0 16 16" width="18" height="18" fill="currentColor" shape-rendering="crispEdges">
-          <rect v-for="(barra, i) in alineacion.barras" :key="i" :x="barra[0]" :y="barra[1]" :width="barra[2]" height="2" />
-        </svg>
-      </button>
-
-      <span class="divider"></span>
-
-      <button class="tool-btn quitar" title="Quitar formato" @mousedown.prevent="aplicarFormato('removeFormat')">Tx</button>
-
-      <span class="divider"></span>
-
-      <button class="px-btn primary add-btn" @click="agregarBloqueFinal">+ BLOQUE</button>
-    </div>
-
-    <section class="doc-sheet px-panel">
-      <div class="sheet-titlebar no-print">
+    <section class="doc-sheet px-panel" :style="{ zoom: sesion.zoom / 100 }">
+      <div class="sheet-titlebar no-print" v-show="!sesion.zen">
         <div class="titlebar-left">
           <span class="pixel-dots"><i></i><i></i><i></i></span>
-          <span class="titlebar-name">DOCUMENTO.DOC</span>
+          <span class="titlebar-name">{{ sesion.documentoId.toUpperCase() }}.DOC</span>
         </div>
         <div class="hud">
           <span class="hud-item"><span class="led" :class="{ on: conectado }"></span>{{ conectado ? 'ONLINE' : 'OFFLINE' }}</span>
-          <span class="hud-item">ID {{ idCorto }}</span>
+          <span class="hud-item">ID #{{ sesion.uid }}</span>
+          <span class="hud-item">{{ jugadoresTotal }} JUG</span>
           <span class="hud-item">{{ totalPalabras }} PAL</span>
+          <span class="hud-item">{{ totalCaracteres }} CAR</span>
           <span class="hud-item">{{ bloques.length }} BLQ</span>
         </div>
       </div>
@@ -61,15 +24,30 @@
           :index="index"
           :isFirst="index === 0"
           :isLast="index === bloques.length - 1"
-          :miSocketId="miSocketId"
+          :miSocketId="sesion.miId"
+          :numero="numeros[index]"
+          :duenoNombre="nombreDe(bloque.bloqueadoPor)"
+          :duenoColor="colorDe(bloque.bloqueadoPor)"
+          :indicador="indicadorDe(index)"
+          :arrastrado="arrastrando === index"
+          :hayArrastre="arrastrando !== null"
           @solicitar-bloqueo="enviarSolicitudBloqueo"
           @liberar-bloqueo="enviarLiberacionBloqueo"
           @update-content="actualizarContenido"
-          @add-block="agregarBloqueDespues"
+          @add-block="(i) => agregarBloqueDespues(i)"
+          @enter-bloque="alPulsarEnter"
           @delete-block="eliminarBloque"
-          @delete-empty="eliminarBloqueVacio"
-          @move-up="moverBloqueArriba"
-          @move-down="moverBloqueAbajo"
+          @delete-empty="alBorrarVacio"
+          @move-up="(i) => moverA(i, i - 1)"
+          @move-down="(i) => moverA(i, i + 1)"
+          @move-key="moverPorTeclado"
+          @navegar="navegar"
+          @cambiar-tipo="alCambiarTipo"
+          @toggle-hecho="alternarHecho"
+          @drag-start="iniciarArrastre"
+          @drag-over="sobreBloque"
+          @drop-block="soltar"
+          @drag-end="finArrastre"
         />
 
         <button v-if="bloques.length === 0" class="empty-state" @click="agregarBloqueFinal">
@@ -81,131 +59,98 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed, onMounted, onUnmounted, nextTick } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue'
 import { io } from 'socket.io-client'
 import BlockUI from '../components/BlockUI.vue'
+import { sesion, COLORES, nombreDe, colorDe, avisar } from '../stores/sesion'
+import { sonidos } from '../utils/sonidos'
+import { normalizarTipo } from '../utils/tipos'
+import { sanitizar } from '../utils/sanitizar'
+import { exportar, textoPlano } from '../utils/exportar'
 
 const URL_SERVIDOR = import.meta.env.VITE_SOCKET_URL || 'http://localhost:3000'
+const LIMITE_HISTORIAL = 60
+const TIPOS_DE_LISTA = ['lista', 'numerada', 'tarea']
 
 let socket = null
+let temporizadorTitulo = null
+let tituloRemoto = false
+const historial = []
+const rehacerPila = []
 
 const conectado = ref(false)
-const miSocketId = ref('')
+const activoId = ref(null)
+const arrastrando = ref(null)
+const destino = ref(null)
+
+const nuevoId = () => Date.now() * 1000 + Math.floor(Math.random() * 1000)
+
+const crearBloque = (tipo = 'parrafo', contenido = '') => ({
+  id: nuevoId(),
+  contenido,
+  tipo,
+  hecho: false,
+  bloqueadoPor: null
+})
 
 const bloques = ref([
   {
     id: 1,
-    contenido: 'El documento está listo. Selecciona texto y usa las herramientas de arriba.',
+    contenido: 'El documento está listo. Escribe "/" para ver los tipos de bloque.',
+    tipo: 'parrafo',
+    hecho: false,
     bloqueadoPor: null
   }
 ])
 
-const formatos = [
-  { comando: 'bold', titulo: 'Negrita (Ctrl+B)', etiqueta: 'B', clase: 'fmt-b' },
-  { comando: 'italic', titulo: 'Cursiva (Ctrl+I)', etiqueta: 'I', clase: 'fmt-i' },
-  { comando: 'underline', titulo: 'Subrayado (Ctrl+U)', etiqueta: 'U', clase: 'fmt-u' },
-  { comando: 'strikeThrough', titulo: 'Tachado', etiqueta: 'S', clase: 'fmt-s' }
-]
+const bloqueadoPorOtro = (bloque) => !!(bloque && bloque.bloqueadoPor && bloque.bloqueadoPor !== sesion.miId)
 
-const alineaciones = [
-  { comando: 'justifyLeft', titulo: 'Alinear a la izquierda', barras: [[1, 3, 14], [1, 7, 9], [1, 11, 12]] },
-  { comando: 'justifyCenter', titulo: 'Centrar', barras: [[1, 3, 14], [4, 7, 8], [2, 11, 12]] },
-  { comando: 'justifyRight', titulo: 'Alinear a la derecha', barras: [[1, 3, 14], [6, 7, 9], [3, 11, 12]] },
-  { comando: 'justifyFull', titulo: 'Justificar', barras: [[1, 3, 14], [1, 7, 14], [1, 11, 14]] }
-]
+const indiceActivo = computed(() => bloques.value.findIndex((b) => b.id === activoId.value))
+const tipoActivo = computed(() => (indiceActivo.value === -1 ? null : bloques.value[indiceActivo.value].tipo))
+const jugadoresTotal = computed(() => Math.max(1, sesion.usuarios.length))
 
-const activos = reactive({
-  bold: false,
-  italic: false,
-  underline: false,
-  strikeThrough: false,
-  justifyLeft: false,
-  justifyCenter: false,
-  justifyRight: false,
-  justifyFull: false
-})
-
-const idCorto = computed(() => (miSocketId.value ? miSocketId.value.slice(0, 4).toUpperCase() : '----'))
-
-const aTextoPlano = (html) => {
-  const plantilla = document.createElement('template')
-  plantilla.innerHTML = (html || '').replace(/<br\s*\/?>/gi, '\n')
-  return plantilla.content.textContent || ''
-}
-
-const totalPalabras = computed(() => {
-  const texto = bloques.value.map((b) => aTextoPlano(b.contenido)).join(' ')
-  return texto.split(/\s+/).filter(Boolean).length
-})
-
-const etiquetasPermitidas = new Set(['B', 'STRONG', 'I', 'EM', 'U', 'S', 'STRIKE', 'BR', 'DIV', 'P', 'SPAN'])
-const etiquetasPeligrosas = new Set(['SCRIPT', 'STYLE', 'IFRAME', 'OBJECT', 'EMBED', 'LINK', 'META'])
-const alineacionesValidas = ['left', 'center', 'right', 'justify']
-
-const sanitizar = (html) => {
-  const plantilla = document.createElement('template')
-  plantilla.innerHTML = html || ''
-
-  const recorrer = (nodo) => {
-    Array.from(nodo.childNodes).forEach((hijo) => {
-      if (hijo.nodeType === 3) return
-      if (hijo.nodeType !== 1) {
-        hijo.remove()
-        return
-      }
-      if (etiquetasPeligrosas.has(hijo.tagName)) {
-        hijo.remove()
-        return
-      }
-      if (!etiquetasPermitidas.has(hijo.tagName)) {
-        recorrer(hijo)
-        hijo.replaceWith(...Array.from(hijo.childNodes))
-        return
-      }
-      const alineacion = hijo.style ? hijo.style.textAlign : ''
-      Array.from(hijo.attributes).forEach((atributo) => hijo.removeAttribute(atributo.name))
-      if (alineacionesValidas.includes(alineacion)) hijo.style.textAlign = alineacion
-      recorrer(hijo)
-    })
-  }
-
-  recorrer(plantilla.content)
-  return plantilla.innerHTML
-}
-
-const nuevoId = () => Date.now() * 1000 + Math.floor(Math.random() * 1000)
-
-const bloqueadoPorOtro = (bloque) =>
-  !!(bloque && bloque.bloqueadoPor && bloque.bloqueadoPor !== miSocketId.value)
-
-const actualizarActivos = () => {
-  const seleccion = window.getSelection()
-  const nodo = seleccion ? seleccion.anchorNode : null
-  const elemento = nodo ? (nodo.nodeType === 1 ? nodo : nodo.parentElement) : null
-  const dentro = !!(elemento && elemento.closest && elemento.closest('.rich-textarea'))
-
-  Object.keys(activos).forEach((comando) => {
-    if (!dentro) {
-      activos[comando] = false
-      return
+const numeros = computed(() => {
+  let n = 0
+  return bloques.value.map((b) => {
+    if (b.tipo === 'numerada') {
+      n += 1
+      return n
     }
-    try {
-      activos[comando] = document.queryCommandState(comando)
-    } catch {
-      activos[comando] = false
-    }
+    n = 0
+    return 0
   })
+})
+
+const textos = computed(() => bloques.value.map((b) => textoPlano(b.contenido)))
+const totalPalabras = computed(() => textos.value.join(' ').split(/\s+/).filter(Boolean).length)
+const totalCaracteres = computed(() => textos.value.reduce((suma, t) => suma + t.length, 0))
+
+watch(
+  () => [activoId.value, tipoActivo.value],
+  ([id, tipo]) => {
+    sesion.activo = id !== null && tipo ? { id, tipo } : null
+  },
+  { immediate: true }
+)
+
+const instantanea = () =>
+  bloques.value.map((b) => ({ id: b.id, contenido: b.contenido, tipo: b.tipo, hecho: b.hecho }))
+
+const registrar = (antes) => {
+  historial.push({ antes, despues: instantanea() })
+  if (historial.length > LIMITE_HISTORIAL) historial.shift()
+  rehacerPila.length = 0
 }
 
-const aplicarFormato = (comando) => {
-  document.execCommand(comando, false, null)
-  actualizarActivos()
+const emitirEstructura = () => {
+  if (socket) socket.emit('estructura_actualizada', instantanea())
 }
 
-const enfocarBloque = async (id, alFinal = true) => {
+const enfocarBloque = async (id, alFinal = true, soloSiPerdido = false) => {
   await nextTick()
   const editor = document.querySelector(`[data-block-id="${id}"] .rich-textarea`)
   if (!editor) return
+  if (soloSiPerdido && document.activeElement === editor) return
   editor.focus()
   const rango = document.createRange()
   rango.selectNodeContents(editor)
@@ -215,43 +160,48 @@ const enfocarBloque = async (id, alFinal = true) => {
   seleccion.addRange(rango)
 }
 
-const emitirEstructura = () => {
-  if (socket) {
-    socket.emit(
-      'estructura_actualizada',
-      bloques.value.map((b) => ({ id: b.id, contenido: b.contenido }))
-    )
+const buscarEditable = (desde, direccion) => {
+  let i = desde + direccion
+  while (i >= 0 && i < bloques.value.length) {
+    const b = bloques.value[i]
+    if (!bloqueadoPorOtro(b) && b.tipo !== 'divisor') return b
+    i += direccion
   }
-}
-
-const recibirEstructura = (lista) => {
-  if (!Array.isArray(lista)) return
-  bloques.value = lista.map((item) => {
-    const existente = bloques.value.find((b) => b.id === item.id)
-    return existente || { id: item.id, contenido: sanitizar(item.contenido), bloqueadoPor: null }
-  })
+  return null
 }
 
 const agregarBloqueFinal = () => {
-  const bloque = { id: nuevoId(), contenido: '', bloqueadoPor: null }
+  const antes = instantanea()
+  const bloque = crearBloque()
   bloques.value.push(bloque)
+  registrar(antes)
   emitirEstructura()
+  sonidos.agregar()
   enfocarBloque(bloque.id)
 }
 
-const agregarBloqueDespues = (index) => {
-  const bloque = { id: nuevoId(), contenido: '', bloqueadoPor: null }
+const agregarBloqueDespues = (index, tipo = 'parrafo') => {
+  const antes = instantanea()
+  const bloque = crearBloque(tipo)
   bloques.value.splice(index + 1, 0, bloque)
+  registrar(antes)
   emitirEstructura()
+  sonidos.agregar()
   enfocarBloque(bloque.id)
 }
 
 const quitarBloque = (index) => {
   const bloque = bloques.value[index]
-  if (!bloque || bloqueadoPorOtro(bloque)) return false
-  if (socket && bloque.bloqueadoPor === miSocketId.value) socket.emit('liberar_bloqueo', bloque.id)
+  if (!bloque || bloqueadoPorOtro(bloque)) {
+    sonidos.error()
+    return false
+  }
+  const antes = instantanea()
+  if (socket && bloque.bloqueadoPor === sesion.miId) socket.emit('liberar_bloqueo', bloque.id)
   bloques.value.splice(index, 1)
+  registrar(antes)
   emitirEstructura()
+  sonidos.eliminar()
   return true
 }
 
@@ -259,25 +209,127 @@ const eliminarBloque = (index) => {
   quitarBloque(index)
 }
 
-const eliminarBloqueVacio = (index) => {
-  if (bloques.value.length <= 1) return
-  const idAnterior = index > 0 ? bloques.value[index - 1].id : null
-  const idSiguiente = bloques.value[index + 1] ? bloques.value[index + 1].id : null
-  if (!quitarBloque(index)) return
-  if (idAnterior !== null) enfocarBloque(idAnterior, true)
-  else if (idSiguiente !== null) enfocarBloque(idSiguiente, false)
-}
-
-const mover = (index, destino) => {
-  if (destino < 0 || destino >= bloques.value.length) return
-  if (bloqueadoPorOtro(bloques.value[index]) || bloqueadoPorOtro(bloques.value[destino])) return
-  const [bloque] = bloques.value.splice(index, 1)
-  bloques.value.splice(destino, 0, bloque)
+const cambiarTipo = (index, tipo) => {
+  const bloque = bloques.value[index]
+  if (!bloque || bloqueadoPorOtro(bloque) || bloque.tipo === tipo) return
+  const antes = instantanea()
+  bloque.tipo = tipo
+  if (tipo !== 'tarea') bloque.hecho = false
+  let objetivo = bloque.id
+  if (tipo === 'divisor') {
+    bloque.contenido = ''
+    if (socket) socket.emit('actualizar_contenido', { blockId: bloque.id, contenido: '' })
+    const siguiente = crearBloque()
+    bloques.value.splice(index + 1, 0, siguiente)
+    objetivo = siguiente.id
+  }
+  registrar(antes)
   emitirEstructura()
+  sonidos.clic()
+  enfocarBloque(objetivo, true, tipo !== 'divisor')
 }
 
-const moverBloqueArriba = (index) => mover(index, index - 1)
-const moverBloqueAbajo = (index) => mover(index, index + 1)
+const alCambiarTipo = ({ index, tipo }) => cambiarTipo(index, tipo)
+
+const alCambiarTipoActivo = (e) => {
+  if (indiceActivo.value !== -1) cambiarTipo(indiceActivo.value, e.detail)
+}
+
+const alternarHecho = (index) => {
+  const bloque = bloques.value[index]
+  if (!bloque || bloqueadoPorOtro(bloque)) {
+    sonidos.error()
+    return
+  }
+  const antes = instantanea()
+  bloque.hecho = !bloque.hecho
+  registrar(antes)
+  emitirEstructura()
+  sonidos.clic()
+}
+
+const alPulsarEnter = (index) => {
+  const actual = bloques.value[index]
+  if (!actual) return
+  const vacio = textoPlano(actual.contenido).trim() === ''
+  if (vacio && actual.tipo !== 'parrafo') {
+    cambiarTipo(index, 'parrafo')
+    return
+  }
+  agregarBloqueDespues(index, TIPOS_DE_LISTA.includes(actual.tipo) ? actual.tipo : 'parrafo')
+}
+
+const alBorrarVacio = (index) => {
+  const bloque = bloques.value[index]
+  if (!bloque) return
+  if (bloque.tipo !== 'parrafo') {
+    cambiarTipo(index, 'parrafo')
+    return
+  }
+  if (bloques.value.length <= 1) return
+  const anterior = index > 0 ? bloques.value[index - 1].id : null
+  const siguiente = bloques.value[index + 1] ? bloques.value[index + 1].id : null
+  if (!quitarBloque(index)) return
+  if (anterior !== null) enfocarBloque(anterior, true)
+  else if (siguiente !== null) enfocarBloque(siguiente, false)
+}
+
+const moverA = (desde, hacia) => {
+  if (hacia < 0 || hacia >= bloques.value.length || desde === hacia) return false
+  const bloque = bloques.value[desde]
+  if (bloqueadoPorOtro(bloque)) {
+    sonidos.error()
+    return false
+  }
+  const antes = instantanea()
+  const [item] = bloques.value.splice(desde, 1)
+  bloques.value.splice(hacia, 0, item)
+  registrar(antes)
+  emitirEstructura()
+  sonidos.mover()
+  return true
+}
+
+const moverPorTeclado = ({ index, dir }) => {
+  const id = bloques.value[index].id
+  if (moverA(index, index + dir)) enfocarBloque(id, true, true)
+}
+
+const navegar = ({ index, dir }) => {
+  const objetivo = buscarEditable(index, dir)
+  if (objetivo) enfocarBloque(objetivo.id, dir < 0)
+}
+
+const iniciarArrastre = (index) => {
+  arrastrando.value = index
+  destino.value = null
+}
+
+const sobreBloque = ({ index, despues }) => {
+  if (arrastrando.value === null) return
+  const actual = destino.value
+  if (!actual || actual.index !== index || actual.despues !== despues) destino.value = { index, despues }
+}
+
+const indicadorDe = (index) => {
+  if (arrastrando.value === null || !destino.value || destino.value.index !== index) return null
+  return destino.value.despues ? 'abajo' : 'arriba'
+}
+
+const finArrastre = () => {
+  arrastrando.value = null
+  destino.value = null
+}
+
+const soltar = () => {
+  const desde = arrastrando.value
+  const objetivo = destino.value
+  finArrastre()
+  if (desde === null || !objetivo) return
+  let hacia = objetivo.index + (objetivo.despues ? 1 : 0)
+  if (desde < hacia) hacia -= 1
+  moverA(desde, hacia)
+}
 
 const actualizarContenido = ({ id, contenido }) => {
   const bloque = bloques.value.find((b) => b.id === id)
@@ -286,63 +338,230 @@ const actualizarContenido = ({ id, contenido }) => {
 }
 
 const enviarSolicitudBloqueo = (blockId) => {
+  activoId.value = blockId
   if (socket) socket.emit('solicitar_bloqueo', blockId)
 }
 
 const enviarLiberacionBloqueo = (blockId) => {
+  if (activoId.value === blockId) activoId.value = null
   if (socket) socket.emit('liberar_bloqueo', blockId)
 }
 
-const limpiarDocumento = () => {
-  const bloque = { id: nuevoId(), contenido: '', bloqueadoPor: null }
-  bloques.value = [bloque]
+const aplicarInstantanea = (lista) => {
+  const ids = new Set(lista.map((i) => i.id))
+  const eliminados = bloques.value.filter((b) => !ids.has(b.id))
+  if (eliminados.some(bloqueadoPorOtro)) return false
+  eliminados.forEach((b) => {
+    if (socket && b.bloqueadoPor === sesion.miId) socket.emit('liberar_bloqueo', b.id)
+  })
+  bloques.value = lista.map((item) => {
+    const actual = bloques.value.find((b) => b.id === item.id)
+    if (actual) {
+      actual.tipo = item.tipo
+      actual.hecho = item.hecho
+      return actual
+    }
+    return { id: item.id, contenido: item.contenido, tipo: item.tipo, hecho: item.hecho, bloqueadoPor: null }
+  })
   emitirEstructura()
-  enfocarBloque(bloque.id)
+  return true
 }
 
-const escaparHtml = (texto) => texto.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+const editorActivo = () => {
+  const el = document.activeElement
+  return !!(el && el.classList && el.classList.contains('rich-textarea'))
+}
 
-const exportarDocumento = (evento) => {
-  const { formato, titulo } = evento.detail || {}
-  const nombre = (titulo || 'documento').trim().replace(/[\\/:*?"<>|]+/g, '-') || 'documento'
-  let contenido = ''
-  let tipo = 'text/plain;charset=utf-8'
-  let extension = 'txt'
-
-  if (formato === 'html') {
-    const parrafos = bloques.value.map((b) => `<div class="bloque">${b.contenido || '<br>'}</div>`).join('\n')
-    contenido = `<!DOCTYPE html>\n<html lang="es">\n<head>\n<meta charset="UTF-8">\n<title>${escaparHtml(nombre)}</title>\n<style>body{font-family:Georgia,serif;max-width:800px;margin:40px auto;padding:0 20px;line-height:1.7;color:#1b1740}.bloque{margin-bottom:12px}</style>\n</head>\n<body>\n<h1>${escaparHtml(titulo || 'Documento')}</h1>\n${parrafos}\n</body>\n</html>`
-    tipo = 'text/html;charset=utf-8'
-    extension = 'html'
-  } else {
-    contenido = bloques.value.map((b) => aTextoPlano(b.contenido)).join('\n\n')
+const usarHistorialNativo = (comando) => {
+  if (!editorActivo()) return false
+  try {
+    if (document.queryCommandEnabled(comando)) {
+      document.execCommand(comando)
+      return true
+    }
+  } catch {
+    return false
   }
-
-  const archivo = new Blob([contenido], { type: tipo })
-  const url = URL.createObjectURL(archivo)
-  const enlace = document.createElement('a')
-  enlace.href = url
-  enlace.download = `${nombre}.${extension}`
-  document.body.appendChild(enlace)
-  enlace.click()
-  enlace.remove()
-  setTimeout(() => URL.revokeObjectURL(url), 1000)
+  return false
 }
+
+const deshacer = () => {
+  if (usarHistorialNativo('undo')) return
+  const entrada = historial.pop()
+  if (!entrada) {
+    sonidos.error()
+    return
+  }
+  if (aplicarInstantanea(entrada.antes)) {
+    rehacerPila.push(entrada)
+    sonidos.mover()
+  } else {
+    historial.push(entrada)
+    sonidos.error()
+  }
+}
+
+const rehacer = () => {
+  if (usarHistorialNativo('redo')) return
+  const entrada = rehacerPila.pop()
+  if (!entrada) {
+    sonidos.error()
+    return
+  }
+  if (aplicarInstantanea(entrada.despues)) {
+    historial.push(entrada)
+    sonidos.mover()
+  } else {
+    rehacerPila.push(entrada)
+    sonidos.error()
+  }
+}
+
+const alTeclaGlobal = (e) => {
+  const control = e.ctrlKey || e.metaKey
+  if (!control || e.altKey) return
+  if (e.target && e.target.closest && e.target.closest('input, textarea')) return
+  const tecla = e.key.toLowerCase()
+  if (tecla === 'z' && !e.shiftKey) {
+    e.preventDefault()
+    deshacer()
+  } else if (tecla === 'y' || (tecla === 'z' && e.shiftKey)) {
+    e.preventDefault()
+    rehacer()
+  }
+}
+
+const recibirEstructura = (lista) => {
+  if (!Array.isArray(lista)) return
+  finArrastre()
+  bloques.value = lista.map((item) => {
+    const existente = bloques.value.find((b) => b.id === item.id)
+    if (existente) {
+      if (item.tipo !== undefined) existente.tipo = normalizarTipo(item.tipo, existente.tipo)
+      if (item.hecho !== undefined) existente.hecho = !!item.hecho
+      return existente
+    }
+    return {
+      id: item.id,
+      contenido: sanitizar(item.contenido),
+      tipo: normalizarTipo(item.tipo),
+      hecho: !!item.hecho,
+      bloqueadoPor: null
+    }
+  })
+}
+
+const aplicarTituloRemoto = (titulo) => {
+  if (typeof titulo !== 'string' || !titulo || sesion.titulo === titulo) return
+  tituloRemoto = true
+  sesion.titulo = titulo
+}
+
+const recibirPresencia = (lista) => {
+  if (!Array.isArray(lista)) return
+  const limpia = lista.map((u) => ({
+    id: String(u.id),
+    uid: String(u.uid || '').slice(0, 12),
+    nombre: String(u.nombre || '').slice(0, 16) || 'JUGADOR',
+    color: COLORES.includes(u.color) ? u.color : COLORES[0]
+  }))
+  const previos = new Set(sesion.usuarios.map((u) => u.id))
+  const nuevos = new Set(limpia.map((u) => u.id))
+  if (previos.size > 0) {
+    limpia.forEach((u) => {
+      if (!previos.has(u.id) && u.id !== sesion.miId) {
+        avisar(`${u.nombre.toUpperCase()} SE UNIÓ`)
+        sonidos.entrar()
+      }
+    })
+    sesion.usuarios.forEach((u) => {
+      if (!nuevos.has(u.id)) {
+        avisar(`${u.nombre.toUpperCase()} SALIÓ`)
+        sonidos.salir()
+      }
+    })
+  }
+  sesion.usuarios = limpia
+}
+
+const alExportar = async (e) => {
+  const formato = e.detail && e.detail.formato
+  if (!formato) return
+  avisar('PREPARANDO ARCHIVO...')
+  try {
+    await exportar(formato, {
+      titulo: sesion.titulo,
+      autor: sesion.nombre,
+      bloques: instantanea()
+    })
+    avisar('ARCHIVO DESCARGADO')
+    sonidos.agregar()
+  } catch (error) {
+    console.error(error)
+    avisar('NO SE PUDO EXPORTAR')
+    sonidos.error()
+  }
+}
+
+watch(
+  () => sesion.titulo,
+  (titulo) => {
+    if (tituloRemoto) {
+      tituloRemoto = false
+      return
+    }
+    clearTimeout(temporizadorTitulo)
+    temporizadorTitulo = setTimeout(() => {
+      if (socket) socket.emit('cambiar_titulo', titulo)
+    }, 500)
+  }
+)
 
 onMounted(() => {
   socket = io(URL_SERVIDOR)
 
   socket.on('connect', () => {
     conectado.value = true
-    miSocketId.value = socket.id
+    sesion.miId = socket.id
+    socket.emit('unirse', {
+      documentoId: sesion.documentoId,
+      uid: sesion.uid,
+      nombre: sesion.nombre,
+      color: sesion.color
+    })
   })
 
   socket.on('disconnect', () => {
     conectado.value = false
+    sesion.usuarios = []
     bloques.value.forEach((b) => {
       b.bloqueadoPor = null
     })
   })
+
+  socket.on('connect_error', () => {
+    conectado.value = false
+  })
+
+  socket.on('estado_inicial', (estado) => {
+    const lista = estado && Array.isArray(estado.bloques) ? estado.bloques : []
+    bloques.value = lista.map((b) => ({
+      id: b.id,
+      contenido: sanitizar(b.contenido),
+      tipo: normalizarTipo(b.tipo),
+      hecho: !!b.hecho,
+      bloqueadoPor: null
+    }))
+    ;((estado && estado.bloqueos) || []).forEach(({ blockId, userId }) => {
+      const bloque = bloques.value.find((b) => b.id === blockId)
+      if (bloque) bloque.bloqueadoPor = userId
+    })
+    if (estado) aplicarTituloRemoto(estado.titulo)
+  })
+
+  socket.on('presencia', recibirPresencia)
+
+  socket.on('titulo_actualizado', aplicarTituloRemoto)
 
   socket.on('bloqueo_aprobado', ({ blockId, userId }) => {
     const bloque = bloques.value.find((b) => b.id === blockId)
@@ -356,120 +575,50 @@ onMounted(() => {
 
   socket.on('contenido_actualizado', ({ blockId, contenido }) => {
     const bloque = bloques.value.find((b) => b.id === blockId)
-    if (!bloque || bloque.bloqueadoPor === miSocketId.value) return
+    if (!bloque || bloque.bloqueadoPor === sesion.miId) return
     bloque.contenido = sanitizar(contenido)
   })
 
   socket.on('estructura_actualizada', recibirEstructura)
 
-  window.addEventListener('limpiar-documento', limpiarDocumento)
-  window.addEventListener('exportar-documento', exportarDocumento)
-  document.addEventListener('selectionchange', actualizarActivos)
+  socket.on('error_servidor', () => {
+    avisar('ERROR DEL SERVIDOR')
+    sonidos.error()
+  })
+
+  window.addEventListener('keydown', alTeclaGlobal)
+  window.addEventListener('deshacer-documento', deshacer)
+  window.addEventListener('rehacer-documento', rehacer)
+  window.addEventListener('agregar-bloque-final', agregarBloqueFinal)
+  window.addEventListener('cambiar-tipo-activo', alCambiarTipoActivo)
+  window.addEventListener('exportar-documento', alExportar)
 })
 
 onUnmounted(() => {
+  clearTimeout(temporizadorTitulo)
   if (socket) socket.disconnect()
-  window.removeEventListener('limpiar-documento', limpiarDocumento)
-  window.removeEventListener('exportar-documento', exportarDocumento)
-  document.removeEventListener('selectionchange', actualizarActivos)
+  sesion.activo = null
+  window.removeEventListener('keydown', alTeclaGlobal)
+  window.removeEventListener('deshacer-documento', deshacer)
+  window.removeEventListener('rehacer-documento', rehacer)
+  window.removeEventListener('agregar-bloque-final', agregarBloqueFinal)
+  window.removeEventListener('cambiar-tipo-activo', alCambiarTipoActivo)
+  window.removeEventListener('exportar-documento', alExportar)
 })
 </script>
 
 <style scoped>
 .editor-container {
   width: 100%;
-  max-width: 940px;
+  max-width: 960px;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 1.5rem;
-}
-
-.px-toolbar {
-  position: sticky;
-  top: calc(var(--nav-h) + 30px);
-  z-index: 40;
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: center;
-  gap: 4px;
-  padding: 7px 12px;
-}
-
-.tool-btn {
-  width: 36px;
-  height: 36px;
-  display: grid;
-  place-items: center;
-  background: transparent;
-  border: 2px solid transparent;
-  color: var(--text);
-  font-size: 1.5rem;
-  line-height: 1;
-  cursor: pointer;
-  transition: transform 0.06s, background 0.15s;
-}
-
-.tool-btn:hover {
-  background: var(--accent-soft);
-  border-color: var(--ink);
-}
-
-.tool-btn:active {
-  transform: translate(2px, 2px);
-}
-
-.tool-btn.on {
-  background: var(--ink);
-  color: var(--on-ink);
-  border-color: var(--ink);
-}
-
-.tool-btn svg {
-  display: block;
-}
-
-.fmt-b,
-.fmt-i,
-.fmt-u,
-.fmt-s,
-.quitar {
-  font-family: 'IBM Plex Mono', monospace;
-  font-size: 1.05rem;
-}
-
-.fmt-b {
-  font-weight: 700;
-}
-
-.fmt-i {
-  font-style: italic;
-}
-
-.fmt-u {
-  text-decoration: underline;
-}
-
-.fmt-s {
-  text-decoration: line-through;
-}
-
-.divider {
-  width: 2px;
-  height: 22px;
-  margin: 0 6px;
-  background: var(--ink);
-  opacity: 0.35;
-}
-
-.add-btn {
-  height: 36px;
 }
 
 .doc-sheet {
   width: 100%;
-  min-height: 72vh;
+  min-height: 74vh;
   display: flex;
   flex-direction: column;
   background: var(--sheet);
@@ -486,7 +635,7 @@ onUnmounted(() => {
   background: var(--ink);
   color: var(--on-ink);
   font-family: 'Press Start 2P', monospace;
-  font-size: 0.6rem;
+  font-size: 0.55rem;
 }
 
 .titlebar-left {
@@ -508,7 +657,7 @@ onUnmounted(() => {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 16px;
+  gap: 14px;
 }
 
 .hud-item {
@@ -533,14 +682,13 @@ onUnmounted(() => {
 
 .sheet-body {
   flex: 1;
-  padding: 2.4rem 2.2rem 3rem 0.8rem;
+  padding: 2.4rem 2.2rem 3.5rem 0.8rem;
 }
 
 .empty-state {
   display: block;
-  width: 100%;
-  margin-left: 70px;
-  max-width: calc(100% - 70px);
+  width: calc(100% - 94px);
+  margin-left: 94px;
   padding: 14px;
   background: transparent;
   border: 2px dashed var(--ink);
@@ -554,11 +702,12 @@ onUnmounted(() => {
 
 @media (max-width: 640px) {
   .sheet-body {
-    padding: 1.6rem 0.8rem 2rem 0.4rem;
+    padding: 1.6rem 0.8rem 2.5rem 0.4rem;
   }
 
-  .px-toolbar {
-    top: calc(var(--nav-h) + 22px);
+  .empty-state {
+    width: calc(100% - 62px);
+    margin-left: 62px;
   }
 }
 </style>

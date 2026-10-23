@@ -5,18 +5,30 @@
     <div class="blob lavender-blob"></div>
   </div>
   <div class="crt-overlay no-print"></div>
-  <MainLayout>
+  <PantallaInicio v-if="!sesion.listo" />
+  <MainLayout v-else>
     <router-view />
   </MainLayout>
 </template>
 
 <script setup>
 import MainLayout from './layouts/MainLayout.vue'
+import PantallaInicio from './components/PantallaInicio.vue'
+import { sesion } from './stores/sesion'
 </script>
 
 <style>
 @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:ital,wght@0,400;0,500;0,600;0,700;1,400;1,600&family=Press+Start+2P&family=VT323&display=swap');
 
+html {
+  scroll-padding-top: 200px;
+}
+
+@media print {
+  .doc-sheet {
+    zoom: 1 !important;
+  }
+}
 :root {
   --bg: #ece8fa;
   --bg-grid: rgba(43, 37, 99, 0.08);
