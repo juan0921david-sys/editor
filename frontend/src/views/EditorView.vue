@@ -68,7 +68,7 @@ import { normalizarTipo } from '../utils/tipos'
 import { sanitizar } from '../utils/sanitizar'
 import { exportar, textoPlano } from '../utils/exportar'
 
-const URL_SERVIDOR = import.meta.env.VITE_SOCKET_URL || 'http://localhost:3000'
+const URL_SERVIDOR = 'https://glowing-space-tribble-697w44969jx52x55g-3000.app.github.dev'
 const LIMITE_HISTORIAL = 60
 const TIPOS_DE_LISTA = ['lista', 'numerada', 'tarea']
 
