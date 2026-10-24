@@ -1,8 +1,8 @@
 <template>
   <div class="intro" @click="avanzar">
     <div class="intro-panel px-panel" @click.stop>
-      <div class="pixel-title">EDITOR<br />_DOCS</div>
-      <p class="intro-sub">EDITOR COLABORATIVO · BLOQUEO DE BLOQUES</p>
+      <div class="pixel-title">EDITOR<br />COLABORATIVO</div>
+      <p class="intro-sub">·BLOQUEO DE BLOQUES·</p>
 
       <template v-if="paso === 'titulo'">
         <button class="px-btn primary press-start" @click="avanzar">PRESS START</button>
@@ -10,7 +10,7 @@
       </template>
 
       <form v-else class="jugador" @submit.prevent="comenzar">
-        <label class="etiqueta" for="nombre-jugador">NOMBRE DE JUGADOR</label>
+        <label class="etiqueta" for="nombre-jugador">NOMBRE</label>
         <input
           id="nombre-jugador"
           ref="entrada"
@@ -38,7 +38,7 @@
           <div class="avatar" :style="{ background: color }">{{ inicial }}</div>
           <div class="datos">
             <strong>{{ nombre.trim() || 'JUGADOR' }}</strong>
-            <small>ID ÚNICA #{{ sesion.uid }}</small>
+            <small>ID ÚNICA: #{{ sesion.uid }}</small>
           </div>
         </div>
         <button type="submit" class="px-btn primary entrar" :disabled="!valido">▶ START</button>
