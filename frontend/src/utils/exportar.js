@@ -10,9 +10,6 @@ const escaparHtml = (texto) =>
 const nombreArchivo = (titulo) =>
   (titulo || 'documento').trim().replace(/[\\/:*?"<>|]+/g, '-').slice(0, 80) || 'documento'
 
-const fechaTexto = () =>
-  new Date().toLocaleDateString('es-CO', { day: 'numeric', month: 'long', year: 'numeric' })
-
 const descargar = (blob, nombre) => {
   const url = URL.createObjectURL(blob)
   const enlace = document.createElement('a')
@@ -69,7 +66,11 @@ const htmlAParrafos = (html) => {
         return
       }
       if (hijo.nodeType !== 1) return
+      
+      // Sanitización estricta: saltarse botones o inputs que no son texto
       const etiqueta = hijo.tagName
+      if (['BUTTON', 'INPUT', 'SCRIPT', 'STYLE'].includes(etiqueta)) return
+      
       if (etiqueta === 'BR') {
         if (!actual) abrir(alineacion)
         actual.runs.push({ salto: true })
@@ -239,7 +240,7 @@ const aHtml = (datos) => {
         case 'tarea':
           return `<div class="item${b.hecho ? ' hecho' : ''}"><span class="marca">${b.hecho ? '&#9745;' : '&#9744;'}</span><div>${interior}</div></div>`
         case 'cita':
-          return `blockquote>${interior}</blockquote>`
+          return `<blockquote>${interior}</blockquote>`
         case 'codigo':
           return `<pre>${escaparHtml(b.texto)}</pre>`
         case 'divisor':
@@ -612,4 +613,4 @@ export const exportar = async (formato, datos) => {
   } else if (formato === 'docx') {
     descargar(await aDocx(datos), `${base}.docx`)
   }
-}
+} 

@@ -37,19 +37,6 @@
         </div>
 
         <div class="nav-right">
-          <button class="players" title="Quién está en el documento" @click="modal = 'compartir'">
-            <span
-              v-for="u in visibles"
-              :key="u.id"
-              class="player"
-              :class="{ yo: esYo(u) }"
-              :style="{ background: u.color }"
-              :title="`${u.nombre} #${u.uid || ''}`"
-            >
-              {{ inicial(u.nombre) }}
-            </span>
-            <span v-if="extra > 0" class="player mas">+{{ extra }}</span>
-          </button>
           <button
             class="px-btn icono-btn"
             :class="{ apagado: !sesion.sonido }"
@@ -160,8 +147,6 @@ const jugadores = computed(() =>
     : [{ id: 'yo', uid: sesion.uid, nombre: sesion.nombre, color: sesion.color }]
 )
 
-const visibles = computed(() => jugadores.value.slice(0, 4))
-const extra = computed(() => Math.max(0, jugadores.value.length - 4))
 const esYo = (u) => u.id === 'yo' || u.id === sesion.miId || u.uid === sesion.uid
 const inicial = (nombre) => (String(nombre || '?').trim()[0] || '?').toUpperCase()
 
@@ -308,6 +293,7 @@ onUnmounted(() => window.removeEventListener('keydown', alTeclear))
 
 .px-navbar {
   display: flex;
+  flex-wrap: wrap; /* Evita que los botones colisionen */
   justify-content: space-between;
   align-items: center;
   gap: 16px;
@@ -317,6 +303,7 @@ onUnmounted(() => window.removeEventListener('keydown', alTeclear))
 .nav-left,
 .nav-right {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 12px;
   min-width: 0;
@@ -341,7 +328,7 @@ onUnmounted(() => window.removeEventListener('keydown', alTeclear))
 }
 
 .doc-title-input {
-  width: min(340px, 40vw);
+  width: min(340px, 50vw);
   margin-left: -6px;
   padding: 0 6px;
   background: transparent;
@@ -364,6 +351,7 @@ onUnmounted(() => window.removeEventListener('keydown', alTeclear))
 
 .doc-menu {
   display: flex;
+  flex-wrap: wrap;
   gap: 2px;
   margin-left: -6px;
 }
@@ -434,37 +422,6 @@ onUnmounted(() => window.removeEventListener('keydown', alTeclear))
   opacity: 0.7;
 }
 
-.players {
-  display: flex;
-  padding: 4px 6px 4px 12px;
-  background: transparent;
-  border: none;
-  cursor: pointer;
-}
-
-.player {
-  width: 34px;
-  height: 34px;
-  display: grid;
-  place-items: center;
-  margin-left: -6px;
-  border: 3px solid var(--ink);
-  box-shadow: 2px 2px 0 var(--shadow);
-  color: #1b1740;
-  font-family: 'Press Start 2P', monospace;
-  font-size: 0.6rem;
-}
-
-.player.yo {
-  outline: 2px solid var(--text);
-  outline-offset: 1px;
-}
-
-.player.mas {
-  background: var(--panel);
-  color: var(--text);
-}
-
 .icono-btn {
   width: 42px;
   padding: 0;
@@ -482,7 +439,7 @@ onUnmounted(() => window.removeEventListener('keydown', alTeclear))
   display: flex;
   flex-direction: column;
   align-items: center;
-  padding: 1.25rem 1rem 3.5rem;
+  padding: 0;
 }
 
 .zen-salir {
@@ -639,22 +596,36 @@ onUnmounted(() => window.removeEventListener('keydown', alTeclear))
   line-height: 1.1;
 }
 
+/* Responsividad mejorada para móviles */
 @media (max-width: 640px) {
-  .logo-badge,
-  .players {
+  .logo-badge {
     display: none;
+  }
+  
+  .px-navbar {
+    justify-content: center;
+    padding: 10px 8px;
+    gap: 8px;
+  }
+
+  .nav-left, .nav-right {
+    justify-content: center;
   }
 
   .doc-title-input {
-    width: 36vw;
+    width: 100%;
+    max-width: none;
+    text-align: center;
+    margin-left: 0;
+  }
+  
+  .doc-menu {
+    justify-content: center;
+    margin-left: 0;
   }
 
   .cabecera {
-    padding: 8px 8px 10px;
-  }
-
-  .px-navbar {
-    padding: 6px 10px;
+    padding: 8px;
   }
 }
 </style>

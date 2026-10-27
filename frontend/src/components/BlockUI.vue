@@ -12,15 +12,15 @@
     }"
     :data-block-id="String(bloque.id)"
     :data-tipo="bloque.tipo"
-    :style="{ '--dueno': duenoColor || 'var(--ink)', '--yo': miColor || 'var(--ink)' }"
+    :style="{ '--dueno': duenoColor || 'var(--ink)' }"
     @dragover="alArrastrarSobre"
     @drop="alSoltar"
   >
     <div class="block-controls no-print">
       <span
         class="handle"
-        :class="{ deshabilitado: bloqueadoPorOtro || soloLectura }"
-        :draggable="!bloqueadoPorOtro && !soloLectura"
+        :class="{ deshabilitado: bloqueadoPorOtro }"
+        :draggable="!bloqueadoPorOtro"
         title="Arrastrar para mover"
         aria-label="Arrastrar bloque"
         @dragstart="alIniciarArrastre"
@@ -28,15 +28,15 @@
       >
         ⋮⋮
       </span>
-      <button type="button" title="Añadir bloque debajo" :disabled="soloLectura" @click="$emit('add-block', index)">+</button>
-      <button type="button" class="danger" title="Eliminar" :disabled="bloqueadoPorOtro || soloLectura" @click="$emit('delete-block', index)">×</button>
-      <button type="button" title="Subir" :disabled="isFirst || bloqueadoPorOtro || soloLectura" @click="$emit('move-up', index)">▲</button>
-      <button type="button" title="Bajar" :disabled="isLast || bloqueadoPorOtro || soloLectura" @click="$emit('move-down', index)">▼</button>
+      <button type="button" title="Añadir bloque debajo" @click="$emit('add-block', index)">+</button>
+      <button type="button" class="danger" title="Eliminar" :disabled="bloqueadoPorOtro" @click="$emit('delete-block', index)">×</button>
+      <button type="button" title="Subir" :disabled="isFirst || bloqueadoPorOtro" @click="$emit('move-up', index)">▲</button>
+      <button type="button" title="Bajar" :disabled="isLast || bloqueadoPorOtro" @click="$emit('move-down', index)">▼</button>
     </div>
 
     <div class="block-main">
       <span class="lock-badge no-print" v-if="bloqueadoPorOtro" :style="{ background: duenoColor }">
-        {{ duenoNombre || 'ALGUIEN' }}
+        BLOQUEADO · {{ duenoNombre || 'ALGUIEN' }}
       </span>
 
       <div class="block-body">
@@ -49,7 +49,7 @@
           class="marcador casilla"
           :class="{ on: bloque.hecho }"
           :aria-checked="bloque.hecho"
-          :disabled="bloqueadoPorOtro || soloLectura"
+          :disabled="bloqueadoPorOtro"
           @mousedown.prevent
           @click="$emit('toggle-hecho', index)"
         >
@@ -105,8 +105,6 @@ const props = defineProps({
   isFirst: Boolean,
   isLast: Boolean,
   miSocketId: String,
-  miColor: String,
-  soloLectura: Boolean,
   numero: Number,
   duenoNombre: String,
   duenoColor: String,
@@ -146,7 +144,7 @@ const bloqueadoPorOtro = computed(
   () => !!props.bloque.bloqueadoPor && String(props.bloque.bloqueadoPor) !== String(props.miSocketId)
 )
 
-const editable = computed(() => !bloqueadoPorOtro.value && !props.soloLectura && props.bloque.tipo !== 'divisor')
+const editable = computed(() => !bloqueadoPorOtro.value && props.bloque.tipo !== 'divisor')
 const opciones = computed(() => filtrarTipos(filtro.value))
 const menuVisible = computed(() => menuAbierto.value && opciones.value.length > 0)
 
@@ -187,7 +185,7 @@ const cerrarMenu = () => {
 
 const alEnfocar = () => {
   enfocado.value = true
-  if (!bloqueadoPorOtro.value && !props.soloLectura) emit('solicitar-bloqueo', String(props.bloque.id))
+  if (!bloqueadoPorOtro.value) emit('solicitar-bloqueo', String(props.bloque.id))
 }
 
 const alDesenfocar = () => {
@@ -332,7 +330,7 @@ const alPegar = (e) => {
 }
 
 const alIniciarArrastre = (e) => {
-  if (bloqueadoPorOtro.value || props.soloLectura) {
+  if (bloqueadoPorOtro.value) {
     e.preventDefault()
     return
   }
@@ -361,9 +359,9 @@ const alSoltar = (e) => {
 .block-row {
   position: relative;
   display: grid;
-  grid-template-columns: var(--gutter, 84px) 1fr;
+  grid-template-columns: 94px 1fr;
   align-items: start;
-  margin-bottom: 2px;
+  margin-bottom: 8px;
 }
 
 .block-row.menu-open {
@@ -378,7 +376,7 @@ const alSoltar = (e) => {
 .block-row.ind-abajo::after {
   content: '';
   position: absolute;
-  left: var(--gutter, 84px);
+  left: 94px;
   right: 0;
   height: 4px;
   z-index: 5;
@@ -387,23 +385,19 @@ const alSoltar = (e) => {
 }
 
 .block-row.ind-arriba::before {
-  top: -3px;
+  top: -6px;
 }
 
 .block-row.ind-abajo::after {
-  bottom: -3px;
+  bottom: -6px;
 }
 
 .block-controls {
-  position: absolute;
-  left: 0;
-  top: 3px;
-  z-index: 6;
-  width: calc(var(--gutter, 84px) - 6px);
   display: grid;
-  grid-template-columns: repeat(3, 24px);
-  gap: 2px;
+  grid-template-columns: repeat(3, 26px);
+  gap: 3px;
   justify-content: end;
+  padding: 4px 8px 0 0;
   opacity: 0;
   transform: translateX(-6px);
   transition: opacity 0.15s, transform 0.15s;
@@ -427,8 +421,8 @@ const alSoltar = (e) => {
 
 .block-controls button,
 .handle {
-  width: 24px;
-  height: 24px;
+  width: 26px;
+  height: 26px;
   display: grid;
   place-items: center;
   padding: 0;
@@ -436,7 +430,7 @@ const alSoltar = (e) => {
   color: var(--text);
   border: 2px solid var(--ink);
   box-shadow: 2px 2px 0 var(--shadow);
-  font-size: 0.8rem;
+  font-size: 0.85rem;
   line-height: 1;
   cursor: pointer;
   transition: transform 0.06s, box-shadow 0.06s, background 0.15s;
@@ -477,29 +471,8 @@ const alSoltar = (e) => {
 }
 
 .block-main {
-  grid-column: 2;
   position: relative;
   min-width: 0;
-}
-
-.block-row.editing .block-main::before,
-.block-row.locked .block-main::before {
-  content: '';
-  position: absolute;
-  left: 0;
-  top: 0;
-  bottom: 0;
-  width: 4px;
-  z-index: 1;
-  pointer-events: none;
-}
-
-.block-row.editing .block-main::before {
-  background: var(--yo);
-}
-
-.block-row.locked .block-main::before {
-  background: var(--dueno);
 }
 
 .block-body {
@@ -510,8 +483,8 @@ const alSoltar = (e) => {
 .rich-textarea {
   flex: 1;
   min-width: 0;
-  min-height: 1.6em;
-  padding: 4px 12px;
+  min-height: 1.75em;
+  padding: 6px 12px;
   background: transparent;
   color: var(--text);
   border: 2px solid transparent;
@@ -519,7 +492,7 @@ const alSoltar = (e) => {
   caret-color: var(--ink);
   font-family: 'IBM Plex Mono', monospace;
   font-size: 1rem;
-  line-height: 1.6;
+  line-height: 1.75;
   word-break: break-word;
   transition: background 0.15s, border-color 0.15s, box-shadow 0.15s;
 }
@@ -530,16 +503,15 @@ const alSoltar = (e) => {
 
 .block-row.editing .rich-textarea {
   background: var(--hover);
-  border-color: var(--yo);
+  border-color: var(--ink);
   box-shadow: 3px 3px 0 var(--shadow);
 }
 
 .block-row.locked .rich-textarea {
   border: 2px dashed var(--dueno);
-  background: var(--hover);
-  background: color-mix(in srgb, var(--dueno) 16%, transparent);
-  opacity: 0.88;
-  cursor: default;
+  background: repeating-linear-gradient(135deg, var(--hover) 0 6px, transparent 6px 12px);
+  opacity: 0.7;
+  cursor: not-allowed;
 }
 
 .rich-textarea:empty::before {
@@ -555,22 +527,22 @@ const alSoltar = (e) => {
 }
 
 .block-row[data-tipo='h1'] .rich-textarea {
-  padding-top: 12px;
-  padding-bottom: 6px;
+  padding-top: 14px;
+  padding-bottom: 8px;
   font-family: 'Press Start 2P', monospace;
   font-size: 1.15rem;
   line-height: 1.7;
 }
 
 .block-row[data-tipo='h2'] .rich-textarea {
-  padding-top: 8px;
+  padding-top: 10px;
   font-family: 'Press Start 2P', monospace;
   font-size: 0.95rem;
   line-height: 1.7;
 }
 
 .block-row[data-tipo='h3'] .rich-textarea {
-  padding-top: 6px;
+  padding-top: 8px;
   font-family: 'Press Start 2P', monospace;
   font-size: 0.8rem;
   line-height: 1.8;
@@ -601,17 +573,17 @@ const alSoltar = (e) => {
 .cuadro {
   width: 8px;
   height: 8px;
-  margin: 15px 8px 0 12px;
+  margin: 17px 8px 0 12px;
   background: var(--ink);
 }
 
 .numero {
   min-width: 26px;
-  margin: 6px 4px 0 8px;
+  margin: 8px 4px 0 8px;
   color: var(--ink);
   font-family: 'IBM Plex Mono', monospace;
   font-size: 1rem;
-  line-height: 1.6;
+  line-height: 1.75;
   text-align: right;
 }
 
@@ -620,7 +592,7 @@ const alSoltar = (e) => {
   height: 22px;
   display: grid;
   place-items: center;
-  margin: 8px 6px 0 10px;
+  margin: 11px 6px 0 10px;
   padding: 0;
   background: var(--sheet);
   color: var(--on-ink);
@@ -640,7 +612,7 @@ const alSoltar = (e) => {
 
 .divisor {
   flex: 1;
-  padding: 12px 12px;
+  padding: 14px 12px;
   outline: none;
 }
 
@@ -657,21 +629,14 @@ const alSoltar = (e) => {
 
 .lock-badge {
   position: absolute;
-  top: -9px;
-  right: 8px;
-  z-index: 7;
-  max-width: 60%;
-  overflow: hidden;
-  padding: 3px 6px;
+  top: -11px;
+  right: 10px;
+  z-index: 2;
+  padding: 4px 8px;
   color: #1b1740;
   font-family: 'Press Start 2P', monospace;
-  font-size: 0.42rem;
-  line-height: 1;
-  text-overflow: ellipsis;
+  font-size: 0.5rem;
   text-transform: uppercase;
-  white-space: nowrap;
-  pointer-events: none;
-  box-shadow: 2px 2px 0 var(--shadow);
 }
 
 .lock-badge::after {
@@ -742,11 +707,23 @@ const alSoltar = (e) => {
 
 @media (max-width: 640px) {
   .block-row {
-    --gutter: 62px;
+    grid-template-columns: 54px 1fr;
+  }
+
+  .block-row.ind-arriba::before,
+  .block-row.ind-abajo::after {
+    left: 54px;
   }
 
   .block-controls {
-    grid-template-columns: repeat(2, 24px);
+    grid-template-columns: repeat(2, 22px);
+    gap: 2px;
+  }
+
+  .block-controls button {
+    width: 22px;
+    height: 22px;
+    font-size: 0.7rem;
   }
 
   .handle {

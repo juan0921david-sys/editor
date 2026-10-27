@@ -9,19 +9,6 @@
         <div class="hud">
           <span class="hud-item"><span class="led" :class="{ on: conectado }"></span>{{ conectado ? 'ONLINE' : 'OFFLINE' }}</span>
           <span class="hud-item">ID #{{ sesion.uid }}</span>
-          <div class="hud-users">
-            <span
-              v-for="user in usuariosVisibles"
-              :key="user.id"
-              class="user-badge"
-              :class="{ yo: user.id === sesion.miId }"
-              :style="{ background: user.color }"
-              :title="user.nombre"
-            >
-              {{ user.nombre.slice(0, 3) }}
-            </span>
-            <span v-if="usuariosExtra > 0" class="user-badge mas">+{{ usuariosExtra }}</span>
-          </div>
           <span class="hud-item">{{ sesion.usuarios.length }} JUG</span>
           <span class="hud-item">{{ totalPalabras }} PAL</span>
           <span class="hud-item">{{ totalCaracteres }} CAR</span>
@@ -94,7 +81,6 @@ import { exportar, textoPlano } from '../utils/exportar'
 const URL_SERVIDOR = import.meta.env.VITE_BACKEND_URL || 'http://localhost:3000'
 const LIMITE_HISTORIAL = 60
 const ESPERA_REINTENTO = 3000
-const MAX_USUARIOS_HUD = 6
 const TIPOS_DE_LISTA = ['lista', 'numerada', 'tarea']
 
 let socket = null
@@ -127,9 +113,6 @@ const puedeEditar = computed(() => conectado.value && sesion.sincronizado)
 const textoGuardado = computed(
   () => ({ guardado: 'GUARDADO', guardando: 'GUARDANDO...', error: 'ERROR AL GUARDAR' })[sesion.guardado] || 'GUARDADO'
 )
-
-const usuariosVisibles = computed(() => sesion.usuarios.slice(0, MAX_USUARIOS_HUD))
-const usuariosExtra = computed(() => Math.max(0, sesion.usuarios.length - MAX_USUARIOS_HUD))
 
 const sinPermiso = () => {
   if (puedeEditar.value) return false
@@ -755,19 +738,23 @@ onUnmounted(() => {
 <style scoped>
 .editor-container {
   width: 100%;
-  max-width: 960px;
+  padding: 24px 12px;
   display: flex;
   flex-direction: column;
   align-items: center;
+  overflow-x: hidden;
 }
 
 .doc-sheet {
   width: 100%;
-  min-height: 74vh;
+  max-width: 21cm; /* Ancho estándar A4 */
+  min-height: 29.7cm; /* Alto estándar A4 */
   display: flex;
   flex-direction: column;
+  margin: 0 auto;
   background: var(--sheet);
-  box-shadow: 8px 8px 0 var(--shadow), inset 0 0 0 2px var(--sheet), inset 0 0 0 4px var(--accent-soft);
+  box-shadow: 12px 12px 0 var(--shadow), inset 0 0 0 2px var(--ink);
+  transition: max-width 0.3s ease;
 }
 
 .sheet-titlebar {
@@ -826,32 +813,6 @@ onUnmounted(() => {
   align-items: center;
 }
 
-.hud-users {
-  display: flex;
-  gap: 4px;
-  align-items: center;
-}
-
-.user-badge {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 2px 5px;
-  font-size: 0.45rem;
-  font-weight: bold;
-  color: #1b1740;
-  border: 1px solid var(--on-ink);
-}
-
-.user-badge.yo {
-  outline: 2px solid var(--on-ink);
-  outline-offset: 1px;
-}
-
-.user-badge.mas {
-  background: var(--on-ink);
-}
-
 .estado-guardado.estado-guardando {
   opacity: 0.85;
   animation: parpadeo 1s steps(2) infinite;
@@ -888,7 +849,7 @@ onUnmounted(() => {
 .sheet-body {
   --gutter: 84px;
   flex: 1;
-  padding: 1.6rem 1.6rem 3rem 0.4rem;
+  padding: 3rem 2rem 4rem 1rem;
 }
 
 .estado-carga {
@@ -915,10 +876,15 @@ onUnmounted(() => {
   cursor: text;
 }
 
+@media (max-width: 800px) {
+  .editor-container { padding: 12px 6px; }
+  .sheet-body { padding: 2rem 1rem 3rem 0.5rem; }
+}
+
 @media (max-width: 640px) {
   .sheet-body {
     --gutter: 62px;
-    padding: 1.2rem 0.8rem 2.5rem 0.2rem;
+    padding: 1.5rem 0.5rem 2.5rem 0.2rem;
   }
 }
 </style>
