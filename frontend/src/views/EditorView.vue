@@ -4,12 +4,17 @@
       <div class="sheet-titlebar no-print" v-show="!sesion.zen">
         <div class="titlebar-left">
           <span class="pixel-dots"><i></i><i></i><i></i></span>
-          <span class="titlebar-name">{{ sesion.documentoId.toUpperCase() }}.DOC</span>
+          <input class="titlebar-name-input" v-model="sesion.titulo" @input="alCambiarTitulo" placeholder="Título del documento" />
         </div>
         <div class="hud">
           <span class="hud-item"><span class="led" :class="{ on: conectado }"></span>{{ conectado ? 'ONLINE' : 'OFFLINE' }}</span>
           <span class="hud-item">ID #{{ sesion.uid }}</span>
-          <span class="hud-item">{{ jugadoresTotal }} JUG</span>
+          <div class="hud-users">
+            <span v-for="user in sesion.usuarios" :key="user.id" class="user-badge" :style="{ background: user.color }" :title="user.nombre">
+              {{ user.nombre.slice(0, 3) }}
+            </span>
+          </div>
+          <span class="hud-item">{{ sesion.usuarios.length }} JUG</span>
           <span class="hud-item">{{ totalPalabras }} PAL</span>
           <span class="hud-item">{{ totalCaracteres }} CAR</span>
           <span class="hud-item">{{ bloques.length }} BLQ</span>
@@ -19,7 +24,9 @@
       <div class="sheet-body">
         <BlockUI
           v-for="(bloque, index) in bloques"
-          :key="bloque.id"
+          :key="String(bloque.id)"
+          class="block-wrapper"
+          :class="{ 'bloque-bloqueado-externo': bloqueadoPorOtro(bloque) }"
           :bloque="bloque"
           :index="index"
           :isFirst="index === 0"
@@ -68,13 +75,12 @@ import { normalizarTipo } from '../utils/tipos'
 import { sanitizar } from '../utils/sanitizar'
 import { exportar, textoPlano } from '../utils/exportar'
 
-const URL_SERVIDOR = 'https://glowing-space-tribble-697w44969jx52x55g-3000.app.github.dev'
+const URL_SERVIDOR = 'https://grim-cauldron-974wjj7g6469cx9rj-3000.app.github.dev'
 const LIMITE_HISTORIAL = 60
 const TIPOS_DE_LISTA = ['lista', 'numerada', 'tarea']
 
 let socket = null
-let temporizadorTitulo = null
-let tituloRemoto = false
+let timeoutGuardado = null
 const historial = []
 const rehacerPila = []
 
@@ -83,7 +89,7 @@ const activoId = ref(null)
 const arrastrando = ref(null)
 const destino = ref(null)
 
-const nuevoId = () => Date.now() * 1000 + Math.floor(Math.random() * 1000)
+const nuevoId = () => String(Date.now()) + String(Math.floor(Math.random() * 1000))
 
 const crearBloque = (tipo = 'parrafo', contenido = '') => ({
   id: nuevoId(),
@@ -95,7 +101,7 @@ const crearBloque = (tipo = 'parrafo', contenido = '') => ({
 
 const bloques = ref([
   {
-    id: 1,
+    id: '1',
     contenido: 'El documento está listo. Escribe "/" para ver los tipos de bloque.',
     tipo: 'parrafo',
     hecho: false,
@@ -103,11 +109,10 @@ const bloques = ref([
   }
 ])
 
-const bloqueadoPorOtro = (bloque) => !!(bloque && bloque.bloqueadoPor && bloque.bloqueadoPor !== sesion.miId)
+const bloqueadoPorOtro = (bloque) => !!(bloque && bloque.bloqueadoPor && String(bloque.bloqueadoPor) !== String(sesion.miId))
 
-const indiceActivo = computed(() => bloques.value.findIndex((b) => b.id === activoId.value))
+const indiceActivo = computed(() => bloques.value.findIndex((b) => String(b.id) === String(activoId.value)))
 const tipoActivo = computed(() => (indiceActivo.value === -1 ? null : bloques.value[indiceActivo.value].tipo))
-const jugadoresTotal = computed(() => Math.max(1, sesion.usuarios.length))
 
 const numeros = computed(() => {
   let n = 0
@@ -121,20 +126,20 @@ const numeros = computed(() => {
   })
 })
 
-const textos = computed(() => bloques.value.map((b) => textoPlano(b.contenido)))
+const textos = computed(() => bloques.value.map((b) => b.contenido ? textoPlano(b.contenido) : ''))
 const totalPalabras = computed(() => textos.value.join(' ').split(/\s+/).filter(Boolean).length)
-const totalCaracteres = computed(() => textos.value.reduce((suma, t) => suma + t.length, 0))
+const totalCaracteres = computed(() => textos.value.join('').length)
 
 watch(
   () => [activoId.value, tipoActivo.value],
   ([id, tipo]) => {
-    sesion.activo = id !== null && tipo ? { id, tipo } : null
+    sesion.activo = id !== null && tipo ? { id: String(id), tipo } : null
   },
   { immediate: true }
 )
 
 const instantanea = () =>
-  bloques.value.map((b) => ({ id: b.id, contenido: b.contenido, tipo: b.tipo, hecho: b.hecho }))
+  bloques.value.map((b) => ({ id: String(b.id), contenido: b.contenido, tipo: b.tipo, hecho: b.hecho }))
 
 const registrar = (antes) => {
   historial.push({ antes, despues: instantanea() })
@@ -144,6 +149,19 @@ const registrar = (antes) => {
 
 const emitirEstructura = () => {
   if (socket) socket.emit('estructura_actualizada', instantanea())
+}
+
+const autoGuardar = () => {
+  clearTimeout(timeoutGuardado)
+  timeoutGuardado = setTimeout(() => {
+    emitirEstructura()
+  }, 500)
+}
+
+const alCambiarTitulo = (e) => {
+  const nuevoTitulo = e.target.value
+  sesion.titulo = nuevoTitulo
+  if (socket) socket.emit('cambiar_titulo', nuevoTitulo)
 }
 
 const enfocarBloque = async (id, alFinal = true, soloSiPerdido = false) => {
@@ -173,9 +191,11 @@ const buscarEditable = (desde, direccion) => {
 const agregarBloqueFinal = () => {
   const antes = instantanea()
   const bloque = crearBloque()
+  bloque.bloqueadoPor = sesion.miId
   bloques.value.push(bloque)
   registrar(antes)
   emitirEstructura()
+  if (socket) socket.emit('solicitar_bloqueo', String(bloque.id))
   sonidos.agregar()
   enfocarBloque(bloque.id)
 }
@@ -183,9 +203,11 @@ const agregarBloqueFinal = () => {
 const agregarBloqueDespues = (index, tipo = 'parrafo') => {
   const antes = instantanea()
   const bloque = crearBloque(tipo)
+  bloque.bloqueadoPor = sesion.miId
   bloques.value.splice(index + 1, 0, bloque)
   registrar(antes)
   emitirEstructura()
+  if (socket) socket.emit('solicitar_bloqueo', String(bloque.id))
   sonidos.agregar()
   enfocarBloque(bloque.id)
 }
@@ -197,7 +219,7 @@ const quitarBloque = (index) => {
     return false
   }
   const antes = instantanea()
-  if (socket && bloque.bloqueadoPor === sesion.miId) socket.emit('liberar_bloqueo', bloque.id)
+  if (socket && String(bloque.bloqueadoPor) === String(sesion.miId)) socket.emit('liberar_bloqueo', String(bloque.id))
   bloques.value.splice(index, 1)
   registrar(antes)
   emitirEstructura()
@@ -215,13 +237,15 @@ const cambiarTipo = (index, tipo) => {
   const antes = instantanea()
   bloque.tipo = tipo
   if (tipo !== 'tarea') bloque.hecho = false
-  let objetivo = bloque.id
+  let objetivo = String(bloque.id)
   if (tipo === 'divisor') {
     bloque.contenido = ''
-    if (socket) socket.emit('actualizar_contenido', { blockId: bloque.id, contenido: '' })
+    if (socket) socket.emit('actualizar_contenido', { blockId: String(bloque.id), contenido: '' })
     const siguiente = crearBloque()
+    siguiente.bloqueadoPor = sesion.miId
     bloques.value.splice(index + 1, 0, siguiente)
-    objetivo = siguiente.id
+    if (socket) socket.emit('solicitar_bloqueo', String(siguiente.id))
+    objetivo = String(siguiente.id)
   }
   registrar(antes)
   emitirEstructura()
@@ -267,8 +291,8 @@ const alBorrarVacio = (index) => {
     return
   }
   if (bloques.value.length <= 1) return
-  const anterior = index > 0 ? bloques.value[index - 1].id : null
-  const siguiente = bloques.value[index + 1] ? bloques.value[index + 1].id : null
+  const anterior = index > 0 ? String(bloques.value[index - 1].id) : null
+  const siguiente = bloques.value[index + 1] ? String(bloques.value[index + 1].id) : null
   if (!quitarBloque(index)) return
   if (anterior !== null) enfocarBloque(anterior, true)
   else if (siguiente !== null) enfocarBloque(siguiente, false)
@@ -291,13 +315,13 @@ const moverA = (desde, hacia) => {
 }
 
 const moverPorTeclado = ({ index, dir }) => {
-  const id = bloques.value[index].id
+  const id = String(bloques.value[index].id)
   if (moverA(index, index + dir)) enfocarBloque(id, true, true)
 }
 
 const navegar = ({ index, dir }) => {
   const objetivo = buscarEditable(index, dir)
-  if (objetivo) enfocarBloque(objetivo.id, dir < 0)
+  if (objetivo) enfocarBloque(String(objetivo.id), dir < 0)
 }
 
 const iniciarArrastre = (index) => {
@@ -331,38 +355,60 @@ const soltar = () => {
   moverA(desde, hacia)
 }
 
-const actualizarContenido = ({ id, contenido }) => {
-  const bloque = bloques.value.find((b) => b.id === id)
+const actualizarContenido = (param1, param2) => {
+  const id = (param1 && param1.id) !== undefined ? String(param1.id) : String(param1)
+  const contenido = (param1 && param1.contenido) !== undefined ? param1.contenido : param2
+
+  const bloque = bloques.value.find((b) => String(b.id) === id)
+  
+  if (bloque && bloque.bloqueadoPor && String(bloque.bloqueadoPor) !== String(sesion.miId)) {
+    return
+  }
+
   if (bloque) bloque.contenido = contenido
   if (socket) socket.emit('actualizar_contenido', { blockId: id, contenido })
+  autoGuardar()
 }
 
 const enviarSolicitudBloqueo = (blockId) => {
-  activoId.value = blockId
-  if (socket) socket.emit('solicitar_bloqueo', blockId)
+  const strId = String(blockId)
+  const bloque = bloques.value.find((b) => String(b.id) === strId)
+  
+  if (bloque && bloque.bloqueadoPor && String(bloque.bloqueadoPor) !== String(sesion.miId)) {
+    if (document.activeElement) document.activeElement.blur()
+    return
+  }
+
+  activoId.value = strId
+  if (socket) socket.emit('solicitar_bloqueo', strId)
 }
 
 const enviarLiberacionBloqueo = (blockId) => {
-  if (activoId.value === blockId) activoId.value = null
-  if (socket) socket.emit('liberar_bloqueo', blockId)
+  const strId = String(blockId)
+  if (String(activoId.value) === strId) activoId.value = null
+  emitirEstructura() 
+  if (socket) socket.emit('liberar_bloqueo', strId)
 }
 
 const aplicarInstantanea = (lista) => {
-  const ids = new Set(lista.map((i) => i.id))
-  const eliminados = bloques.value.filter((b) => !ids.has(b.id))
+  const ids = new Set(lista.map((i) => String(i.id)))
+  const eliminados = bloques.value.filter((b) => !ids.has(String(b.id)))
   if (eliminados.some(bloqueadoPorOtro)) return false
   eliminados.forEach((b) => {
-    if (socket && b.bloqueadoPor === sesion.miId) socket.emit('liberar_bloqueo', b.id)
+    if (socket && String(b.bloqueadoPor) === String(sesion.miId)) socket.emit('liberar_bloqueo', String(b.id))
   })
-  bloques.value = lista.map((item) => {
-    const actual = bloques.value.find((b) => b.id === item.id)
+  
+  const fusion = lista.map((item) => {
+    const actual = bloques.value.find((b) => String(b.id) === String(item.id))
     if (actual) {
       actual.tipo = item.tipo
       actual.hecho = item.hecho
       return actual
     }
-    return { id: item.id, contenido: item.contenido, tipo: item.tipo, hecho: item.hecho, bloqueadoPor: null }
+    return { id: String(item.id), contenido: item.contenido, tipo: item.tipo, hecho: item.hecho, bloqueadoPor: null }
   })
+  
+  bloques.value.splice(0, bloques.value.length, ...fusion)
   emitirEstructura()
   return true
 }
@@ -434,27 +480,26 @@ const alTeclaGlobal = (e) => {
 const recibirEstructura = (lista) => {
   if (!Array.isArray(lista)) return
   finArrastre()
-  bloques.value = lista.map((item) => {
-    const existente = bloques.value.find((b) => b.id === item.id)
+  
+  const fusion = lista.map((item) => {
+    const existente = bloques.value.find((b) => String(b.id) === String(item.id))
     if (existente) {
-      if (item.tipo !== undefined) existente.tipo = normalizarTipo(item.tipo, existente.tipo)
-      if (item.hecho !== undefined) existente.hecho = !!item.hecho
+      existente.tipo = item.tipo !== undefined ? normalizarTipo(item.tipo, existente.tipo) : existente.tipo
+      existente.hecho = item.hecho !== undefined ? !!item.hecho : existente.hecho
+      if (item.contenido !== undefined && String(existente.bloqueadoPor) !== String(sesion.miId)) {
+        existente.contenido = sanitizar(item.contenido)
+      }
       return existente
     }
     return {
-      id: item.id,
-      contenido: sanitizar(item.contenido),
+      id: String(item.id),
+      contenido: item.contenido ? sanitizar(item.contenido) : '',
       tipo: normalizarTipo(item.tipo),
       hecho: !!item.hecho,
       bloqueadoPor: null
     }
   })
-}
-
-const aplicarTituloRemoto = (titulo) => {
-  if (typeof titulo !== 'string' || !titulo || sesion.titulo === titulo) return
-  tituloRemoto = true
-  sesion.titulo = titulo
+  bloques.value.splice(0, bloques.value.length, ...fusion)
 }
 
 const recibirPresencia = (lista) => {
@@ -465,23 +510,26 @@ const recibirPresencia = (lista) => {
     nombre: String(u.nombre || '').slice(0, 16) || 'JUGADOR',
     color: COLORES.includes(u.color) ? u.color : COLORES[0]
   }))
-  const previos = new Set(sesion.usuarios.map((u) => u.id))
-  const nuevos = new Set(limpia.map((u) => u.id))
+  
+  const previos = new Set(sesion.usuarios.map((u) => String(u.id)))
+  const nuevos = new Set(limpia.map((u) => String(u.id)))
+  
   if (previos.size > 0) {
     limpia.forEach((u) => {
-      if (!previos.has(u.id) && u.id !== sesion.miId) {
+      if (!previos.has(String(u.id)) && String(u.id) !== String(sesion.miId)) {
         avisar(`${u.nombre.toUpperCase()} SE UNIÓ`)
         sonidos.entrar()
       }
     })
     sesion.usuarios.forEach((u) => {
-      if (!nuevos.has(u.id)) {
+      if (!nuevos.has(String(u.id))) {
         avisar(`${u.nombre.toUpperCase()} SALIÓ`)
         sonidos.salir()
       }
     })
   }
-  sesion.usuarios = limpia
+  
+  sesion.usuarios.splice(0, sesion.usuarios.length, ...limpia)
 }
 
 const alExportar = async (e) => {
@@ -497,34 +545,19 @@ const alExportar = async (e) => {
     avisar('ARCHIVO DESCARGADO')
     sonidos.agregar()
   } catch (error) {
-    console.error(error)
     avisar('NO SE PUDO EXPORTAR')
     sonidos.error()
   }
 }
-
-watch(
-  () => sesion.titulo,
-  (titulo) => {
-    if (tituloRemoto) {
-      tituloRemoto = false
-      return
-    }
-    clearTimeout(temporizadorTitulo)
-    temporizadorTitulo = setTimeout(() => {
-      if (socket) socket.emit('cambiar_titulo', titulo)
-    }, 500)
-  }
-)
 
 onMounted(() => {
   socket = io(URL_SERVIDOR)
 
   socket.on('connect', () => {
     conectado.value = true
-    sesion.miId = socket.id
+    sesion.miId = String(socket.id)
     socket.emit('unirse', {
-      documentoId: sesion.documentoId,
+      documentoId: String(sesion.documentoId),
       uid: sesion.uid,
       nombre: sesion.nombre,
       color: sesion.color
@@ -533,7 +566,7 @@ onMounted(() => {
 
   socket.on('disconnect', () => {
     conectado.value = false
-    sesion.usuarios = []
+    sesion.usuarios.splice(0, sesion.usuarios.length)
     bloques.value.forEach((b) => {
       b.bloqueadoPor = null
     })
@@ -545,46 +578,48 @@ onMounted(() => {
 
   socket.on('estado_inicial', (estado) => {
     const lista = estado && Array.isArray(estado.bloques) ? estado.bloques : []
-    bloques.value = lista.map((b) => ({
-      id: b.id,
-      contenido: sanitizar(b.contenido),
+    const inicial = lista.map((b) => ({
+      id: String(b.id),
+      contenido: b.contenido ? sanitizar(b.contenido) : '',
       tipo: normalizarTipo(b.tipo),
       hecho: !!b.hecho,
       bloqueadoPor: null
     }))
+    bloques.value.splice(0, bloques.value.length, ...inicial)
+    
     ;((estado && estado.bloqueos) || []).forEach(({ blockId, userId }) => {
-      const bloque = bloques.value.find((b) => b.id === blockId)
-      if (bloque) bloque.bloqueadoPor = userId
+      const bloque = bloques.value.find((b) => String(b.id) === String(blockId))
+      if (bloque) bloque.bloqueadoPor = String(userId)
     })
-    if (estado) aplicarTituloRemoto(estado.titulo)
+    
+    if (estado && estado.titulo) {
+      sesion.titulo = estado.titulo
+    }
   })
 
   socket.on('presencia', recibirPresencia)
 
-  socket.on('titulo_actualizado', aplicarTituloRemoto)
+  socket.on('titulo_actualizado', (nuevoTitulo) => {
+    sesion.titulo = nuevoTitulo
+  })
 
   socket.on('bloqueo_aprobado', ({ blockId, userId }) => {
-    const bloque = bloques.value.find((b) => b.id === blockId)
-    if (bloque) bloque.bloqueadoPor = userId
+    const bloque = bloques.value.find((b) => String(b.id) === String(blockId))
+    if (bloque) bloque.bloqueadoPor = String(userId)
   })
 
   socket.on('bloque_liberado', (blockId) => {
-    const bloque = bloques.value.find((b) => b.id === blockId)
+    const bloque = bloques.value.find((b) => String(b.id) === String(blockId))
     if (bloque) bloque.bloqueadoPor = null
   })
 
   socket.on('contenido_actualizado', ({ blockId, contenido }) => {
-    const bloque = bloques.value.find((b) => b.id === blockId)
-    if (!bloque || bloque.bloqueadoPor === sesion.miId) return
-    bloque.contenido = sanitizar(contenido)
+    const bloque = bloques.value.find((b) => String(b.id) === String(blockId))
+    if (!bloque || String(bloque.bloqueadoPor) === String(sesion.miId)) return
+    bloque.contenido = contenido ? sanitizar(contenido) : ''
   })
 
   socket.on('estructura_actualizada', recibirEstructura)
-
-  socket.on('error_servidor', () => {
-    avisar('ERROR DEL SERVIDOR')
-    sonidos.error()
-  })
 
   window.addEventListener('keydown', alTeclaGlobal)
   window.addEventListener('deshacer-documento', deshacer)
@@ -595,7 +630,6 @@ onMounted(() => {
 })
 
 onUnmounted(() => {
-  clearTimeout(temporizadorTitulo)
   if (socket) socket.disconnect()
   sesion.activo = null
   window.removeEventListener('keydown', alTeclaGlobal)
@@ -653,6 +687,22 @@ onUnmounted(() => {
   opacity: 0.85;
 }
 
+.titlebar-name-input {
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid transparent;
+  color: var(--on-ink);
+  font-family: 'Press Start 2P', monospace;
+  font-size: 0.55rem;
+  outline: none;
+  width: 250px;
+  transition: border 0.2s ease;
+}
+
+.titlebar-name-input:focus {
+  border-bottom: 1px solid var(--on-ink);
+}
+
 .hud {
   display: flex;
   flex-wrap: wrap;
@@ -663,6 +713,23 @@ onUnmounted(() => {
 .hud-item {
   display: inline-flex;
   align-items: center;
+}
+
+.hud-users {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+}
+
+.user-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2px 5px;
+  font-size: 0.45rem;
+  font-weight: bold;
+  color: #1b1740;
+  border: 1px solid var(--on-ink);
 }
 
 .led {
@@ -683,6 +750,20 @@ onUnmounted(() => {
 .sheet-body {
   flex: 1;
   padding: 2.4rem 2.2rem 3.5rem 0.8rem;
+}
+
+.bloque-bloqueado-externo {
+  opacity: 0.6;
+  background-color: rgba(255, 0, 0, 0.04);
+  border-radius: 4px;
+}
+
+.bloque-bloqueado-externo :deep(.rich-textarea),
+.bloque-bloqueado-externo :deep(.block-content),
+.bloque-bloqueado-externo :deep([contenteditable="true"]) {
+  pointer-events: none !important;
+  user-select: none !important;
+  cursor: not-allowed !important;
 }
 
 .empty-state {

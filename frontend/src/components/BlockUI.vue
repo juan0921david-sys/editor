@@ -10,7 +10,7 @@
       'ind-arriba': indicador === 'arriba',
       'ind-abajo': indicador === 'abajo'
     }"
-    :data-block-id="bloque.id"
+    :data-block-id="String(bloque.id)"
     :data-tipo="bloque.tipo"
     :style="{ '--dueno': duenoColor || 'var(--ink)' }"
     @dragover="alArrastrarSobre"
@@ -141,7 +141,7 @@ const filtro = ref('')
 const seleccion = ref(0)
 
 const bloqueadoPorOtro = computed(
-  () => !!props.bloque.bloqueadoPor && props.bloque.bloqueadoPor !== props.miSocketId
+  () => !!props.bloque.bloqueadoPor && String(props.bloque.bloqueadoPor) !== String(props.miSocketId)
 )
 
 const editable = computed(() => !bloqueadoPorOtro.value && props.bloque.tipo !== 'divisor')
@@ -185,13 +185,13 @@ const cerrarMenu = () => {
 
 const alEnfocar = () => {
   enfocado.value = true
-  if (!bloqueadoPorOtro.value) emit('solicitar-bloqueo', props.bloque.id)
+  if (!bloqueadoPorOtro.value) emit('solicitar-bloqueo', String(props.bloque.id))
 }
 
 const alDesenfocar = () => {
   enfocado.value = false
   cerrarMenu()
-  if (!bloqueadoPorOtro.value) emit('liberar-bloqueo', props.bloque.id)
+  if (!bloqueadoPorOtro.value) emit('liberar-bloqueo', String(props.bloque.id))
 }
 
 const revisarComando = (texto) => {
@@ -207,13 +207,13 @@ const revisarComando = (texto) => {
 const alEscribir = (e) => {
   const editor = e.target
   if (editor.innerHTML === '<br>') editor.innerHTML = ''
-  emit('update-content', { id: props.bloque.id, contenido: editor.innerHTML })
+  emit('update-content', { id: String(props.bloque.id), contenido: editor.innerHTML })
   revisarComando(editor.textContent)
 }
 
 const elegirTipo = (id) => {
   if (editorRef.value) editorRef.value.innerHTML = ''
-  emit('update-content', { id: props.bloque.id, contenido: '' })
+  emit('update-content', { id: String(props.bloque.id), contenido: '' })
   cerrarMenu()
   emit('cambiar-tipo', { index: props.index, tipo: id })
 }

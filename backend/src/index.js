@@ -12,9 +12,8 @@ app.use(cors())
 app.use(express.json())
 
 app.get('/', (req, res) => {
-  res.send('¡Backend del Editor Colaborativo funcionando correctamente!');
-});
-
+  res.send('Backend del Editor Colaborativo activo')
+})
 
 const server = http.createServer(app)
 const io = new Server(server, {
@@ -42,73 +41,71 @@ io.on('connection', (socket) => {
 
     try {
       const doc = await obtenerDocumento(documentoId)
-      const bloqueos = Array.from(bloqueosPorDocumento.get(documentoId).entries()).map(([blockId, userId]) => ({ blockId, userId }))
+      const bloqueos = Array.from(bloqueosPorDocumento.get(documentoId).entries()).map(([blockId, userId]) => ({ blockId: String(blockId), userId }))
       
       socket.emit('estado_inicial', {
         titulo: doc.titulo,
-        bloques: doc.bloques,
+        bloques: typeof doc.bloques === 'string' ? JSON.parse(doc.bloques) : doc.bloques,
         bloqueos
       })
 
       io.to(documentoId).emit('presencia', Array.from(usuarios.values()))
     } catch (error) {
-      console.error('Error al unirse:', error)
       socket.emit('error_servidor')
     }
   })
 
   socket.on('cambiar_titulo', async (titulo) => {
-    if (!documentoActual) return
+    if (!documentoActual || typeof titulo !== 'string') return
+    socket.to(documentoActual).emit('titulo_actualizado', titulo)
     try {
       await actualizarTituloBD(documentoActual, titulo)
-      socket.to(documentoActual).emit('titulo_actualizado', titulo)
-    } catch (error) {
-      socket.emit('error_servidor')
-    }
+    } catch (e) {}
   })
 
   socket.on('solicitar_bloqueo', (blockId) => {
     if (!documentoActual) return
+    const bId = String(blockId)
     const bloqueos = bloqueosPorDocumento.get(documentoActual)
     
-    if (!bloqueos.has(blockId)) {
-      bloqueos.set(blockId, socket.id)
-      io.to(documentoActual).emit('bloqueo_aprobado', { blockId, userId: socket.id })
+    if (bloqueos.has(bId) && bloqueos.get(bId) !== socket.id) {
+      return
     }
+
+    bloqueos.set(bId, socket.id)
+    io.to(documentoActual).emit('bloqueo_aprobado', { blockId: bId, userId: socket.id })
   })
 
   socket.on('liberar_bloqueo', (blockId) => {
     if (!documentoActual) return
+    const bId = String(blockId)
     const bloqueos = bloqueosPorDocumento.get(documentoActual)
 
-    if (bloqueos.get(blockId) === socket.id) {
-      bloqueos.delete(blockId)
-      io.to(documentoActual).emit('bloque_liberado', blockId)
+    if (bloqueos && bloqueos.get(bId) === socket.id) {
+      bloqueos.delete(bId)
+      io.to(documentoActual).emit('bloque_liberado', bId)
     }
   })
 
   socket.on('actualizar_contenido', ({ blockId, contenido }) => {
     if (!documentoActual) return
+    const bId = String(blockId)
     const bloqueos = bloqueosPorDocumento.get(documentoActual)
 
-    if (bloqueos.get(blockId) === socket.id) {
-      socket.to(documentoActual).emit('contenido_actualizado', { blockId, contenido })
+    if (!bloqueos.has(bId) || bloqueos.get(bId) === socket.id) {
+      bloqueos.set(bId, socket.id)
+      socket.to(documentoActual).emit('contenido_actualizado', { blockId: bId, contenido })
     }
   })
 
-  socket.on('estructura_actualizada', async (bloques) => {
-    if (!documentoActual) return
-    try {
-      await actualizarEstructuraBD(documentoActual, bloques)
-      socket.to(documentoActual).emit('estructura_actualizada', bloques)
-    } catch (error) {
-      socket.emit('error_servidor')
-    }
+  socket.on('estructura_actualizada', (bloques) => {
+    if (!documentoActual || !Array.isArray(bloques)) return
+    socket.to(documentoActual).emit('estructura_actualizada', bloques)
+    actualizarEstructuraBD(documentoActual, bloques).catch(() => {})
   })
 
   socket.on('disconnect', () => {
     if (!documentoActual) return
-
     const usuarios = usuariosPorDocumento.get(documentoActual)
     const bloqueos = bloqueosPorDocumento.get(documentoActual)
 
@@ -130,13 +127,8 @@ io.on('connection', (socket) => {
 
 const PORT = process.env.PORT || 3000
 
-pool.query('SELECT NOW()', (err, res) => {
-  if (err) {
-    console.error('Error conectando a PostgreSQL:', err.message)
-  } else {
-    console.log('✅ Conexión a PostgreSQL en DigitalOcean establecida.')
-    server.listen(PORT, () => {
-      console.log(`🚀 Servidor corriendo en el puerto ${PORT}`)
-    })
+pool.query('SELECT NOW()', (err) => {
+  if (!err) {
+    server.listen(PORT, () => {})
   }
 })
