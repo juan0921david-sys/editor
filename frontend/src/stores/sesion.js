@@ -53,7 +53,9 @@ export const sesion = reactive({
   miId: '',
   usuarios: [],
   documentoId,
-  titulo: leer(`editor-titulo-${documentoId}`, 'Documento sin título'),
+  titulo: '',
+  sincronizado: false,
+  guardado: 'guardado',
   activo: null,
   tema: leer('editor-tema', prefiereOscuro ? 'dark' : 'light'),
   crt: leer('editor-crt', 'on'),
@@ -69,11 +71,6 @@ const aplicarAspecto = () => {
 }
 
 aplicarAspecto()
-
-watch(
-  () => sesion.titulo,
-  (valor) => escribir(`editor-titulo-${documentoId}`, valor)
-)
 
 watch(
   () => sesion.zoom,
@@ -103,6 +100,8 @@ export const cambiarJugador = () => {
   sesion.usuarios = []
   sesion.miId = ''
   sesion.activo = null
+  sesion.sincronizado = false
+  sesion.guardado = 'guardado'
 }
 
 export const alternarTema = () => {

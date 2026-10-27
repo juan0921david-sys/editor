@@ -1,62 +1,77 @@
 const pool = require('../config/db')
 
-const obtenerDocumento = async (documentoId) => {
-  const query = 'SELECT titulo, bloques FROM documentos WHERE id = $1'
-  const resultado = await pool.query(query, [documentoId])
+const TITULO_POR_DEFECTO = 'Documento sin título'
 
-  if (resultado.rows.length > 0) {
-    return resultado.rows[0]
-  }
-
-  const tituloPorDefecto = 'Documento sin título'
-  const bloquesPorDefecto = JSON.stringify([
+const bloquesPorDefecto = () =>
+  JSON.stringify([
     {
       id: '1',
       contenido: 'El documento está listo. Escribe "/" para ver los tipos de bloque.',
       tipo: 'parrafo',
-      hecho: false,
-      bloqueadoPor: null
+      hecho: false
     }
   ])
 
-  const insertQuery = `
-    INSERT INTO documentos (id, titulo, bloques, actualizado_en)
-    VALUES ($1, $2, $3, NOW())
-    RETURNING titulo, bloques
-  `
-  const nuevoDoc = await pool.query(insertQuery, [documentoId, tituloPorDefecto, bloquesPorDefecto])
-  return nuevoDoc.rows[0]
+const asegurarTabla = async () => {
+  const existente = await pool.query("SELECT to_regclass('documentos') AS tabla")
+  if (!existente.rows[0].tabla) {
+    await pool.query(`
+      CREATE TABLE documentos (
+        id VARCHAR(64) PRIMARY KEY,
+        titulo TEXT NOT NULL DEFAULT 'Documento sin título',
+        bloques JSONB NOT NULL DEFAULT '[]'::jsonb,
+        actualizado_en TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `)
+  }
+
+  const permisos = await pool.query(
+    `SELECT has_table_privilege(current_user, 'documentos', 'SELECT') AS leer,
+            has_table_privilege(current_user, 'documentos', 'INSERT') AS insertar,
+            has_table_privilege(current_user, 'documentos', 'UPDATE') AS actualizar`
+  )
+  const { leer, insertar, actualizar } = permisos.rows[0]
+  if (!leer || !insertar || !actualizar) {
+    throw new Error('El usuario de la base de datos no tiene permisos SELECT, INSERT y UPDATE sobre la tabla documentos')
+  }
+
+  await pool.query('SELECT id, titulo, bloques, actualizado_en FROM documentos LIMIT 1')
+}
+
+const obtenerDocumento = async (documentoId) => {
+  await pool.query(
+    `INSERT INTO documentos (id, titulo, bloques, actualizado_en)
+     VALUES ($1, $2, $3, NOW())
+     ON CONFLICT (id) DO NOTHING`,
+    [documentoId, TITULO_POR_DEFECTO, bloquesPorDefecto()]
+  )
+  const resultado = await pool.query('SELECT titulo, bloques FROM documentos WHERE id = $1', [documentoId])
+  if (resultado.rows.length === 0) throw new Error(`No se pudo cargar el documento ${documentoId}`)
+  return resultado.rows[0]
 }
 
 const actualizarTituloBD = async (documentoId, titulo) => {
-  const query = `
-    INSERT INTO documentos (id, titulo, bloques, actualizado_en)
-    VALUES ($1, $2, $3, NOW())
-    ON CONFLICT (id) 
-    DO UPDATE SET titulo = EXCLUDED.titulo, actualizado_en = NOW()
-  `
-  const bloquesIniciales = JSON.stringify([
-    {
-      id: '1',
-      contenido: '',
-      tipo: 'parrafo',
-      hecho: false,
-      bloqueadoPor: null
-    }
-  ])
-  await pool.query(query, [documentoId, titulo, bloquesIniciales])
+  await pool.query(
+    `INSERT INTO documentos (id, titulo, bloques, actualizado_en)
+     VALUES ($1, $2, $3, NOW())
+     ON CONFLICT (id)
+     DO UPDATE SET titulo = EXCLUDED.titulo, actualizado_en = NOW()`,
+    [documentoId, titulo, bloquesPorDefecto()]
+  )
 }
 
 const actualizarEstructuraBD = async (documentoId, bloques) => {
-  const query = `
-    UPDATE documentos 
-    SET bloques = $1, actualizado_en = NOW() 
-    WHERE id = $2
-  `
-  await pool.query(query, [JSON.stringify(bloques), documentoId])
+  await pool.query(
+    `INSERT INTO documentos (id, titulo, bloques, actualizado_en)
+     VALUES ($1, $2, $3, NOW())
+     ON CONFLICT (id)
+     DO UPDATE SET bloques = EXCLUDED.bloques, actualizado_en = NOW()`,
+    [documentoId, TITULO_POR_DEFECTO, JSON.stringify(bloques)]
+  )
 }
 
 module.exports = {
+  asegurarTabla,
   obtenerDocumento,
   actualizarTituloBD,
   actualizarEstructuraBD
