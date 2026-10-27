@@ -37,6 +37,22 @@
         </div>
 
         <div class="nav-right">
+          <!-- Avatares de jugadores -->
+          <button class="players" title="Quién está en el documento" @click="modal = 'compartir'">
+            <span
+              v-for="u in visibles"
+              :key="u.id"
+              class="player"
+              :class="{ yo: esYo(u) }"
+              :style="{ background: u.color }"
+              :title="`${u.nombre} #${u.uid || ''}`"
+            >
+              {{ inicial(u.nombre) }}
+            </span>
+            <span v-if="extra > 0" class="player mas">+{{ extra }}</span>
+          </button>
+          
+          <!-- Controles extra -->
           <button
             class="px-btn icono-btn"
             :class="{ apagado: !sesion.sonido }"
@@ -67,6 +83,7 @@
 
     <div class="toast px-panel no-print" v-if="sesion.aviso">{{ sesion.aviso }}</div>
 
+    <!-- Modales (Lógica intacta) -->
     <div class="modal-fondo no-print" v-if="modal === 'compartir'" @click.self="modal = null">
       <div class="modal px-panel" role="dialog" aria-label="Compartir documento">
         <div class="modal-cabecera">
@@ -147,6 +164,9 @@ const jugadores = computed(() =>
     : [{ id: 'yo', uid: sesion.uid, nombre: sesion.nombre, color: sesion.color }]
 )
 
+// Limitamos a 4 para que no rompa el diseño
+const visibles = computed(() => jugadores.value.slice(0, 4))
+const extra = computed(() => Math.max(0, jugadores.value.length - 4))
 const esYo = (u) => u.id === 'yo' || u.id === sesion.miId || u.uid === sesion.uid
 const inicial = (nombre) => (String(nombre || '?').trim()[0] || '?').toUpperCase()
 
@@ -293,7 +313,6 @@ onUnmounted(() => window.removeEventListener('keydown', alTeclear))
 
 .px-navbar {
   display: flex;
-  flex-wrap: wrap; /* Evita que los botones colisionen */
   justify-content: space-between;
   align-items: center;
   gap: 16px;
@@ -303,7 +322,6 @@ onUnmounted(() => window.removeEventListener('keydown', alTeclear))
 .nav-left,
 .nav-right {
   display: flex;
-  flex-wrap: wrap;
   align-items: center;
   gap: 12px;
   min-width: 0;
@@ -328,7 +346,7 @@ onUnmounted(() => window.removeEventListener('keydown', alTeclear))
 }
 
 .doc-title-input {
-  width: min(340px, 50vw);
+  width: min(340px, 35vw);
   margin-left: -6px;
   padding: 0 6px;
   background: transparent;
@@ -340,25 +358,16 @@ onUnmounted(() => window.removeEventListener('keydown', alTeclear))
   transition: background 0.15s, border-color 0.15s;
 }
 
-.doc-title-input:hover {
-  border-color: var(--accent-soft);
-}
-
-.doc-title-input:focus {
-  border-color: var(--ink);
-  background: var(--accent-soft);
-}
+.doc-title-input:hover { border-color: var(--accent-soft); }
+.doc-title-input:focus { border-color: var(--ink); background: var(--accent-soft); }
 
 .doc-menu {
   display: flex;
-  flex-wrap: wrap;
   gap: 2px;
   margin-left: -6px;
 }
 
-.menu-container {
-  position: relative;
-}
+.menu-container { position: relative; }
 
 .menu-item {
   padding: 0 10px;
@@ -369,15 +378,8 @@ onUnmounted(() => window.removeEventListener('keydown', alTeclear))
   line-height: 1.4;
   cursor: pointer;
 }
-
-.menu-item:hover {
-  background: var(--accent-soft);
-}
-
-.menu-item.abierto {
-  background: var(--ink);
-  color: var(--on-ink);
-}
+.menu-item:hover { background: var(--accent-soft); }
+.menu-item.abierto { background: var(--ink); color: var(--on-ink); }
 
 .px-dropdown {
   position: absolute;
@@ -405,49 +407,70 @@ onUnmounted(() => window.removeEventListener('keydown', alTeclear))
   text-align: left;
   cursor: pointer;
 }
+.dropdown-item:hover { background: var(--accent); color: var(--on-accent); }
+.separador { height: 2px; margin: 4px 6px; background: var(--accent-soft); }
+.atajo { font-size: 0.95rem; opacity: 0.7; }
 
-.dropdown-item:hover {
-  background: var(--accent);
-  color: var(--on-accent);
+/* AJUSTE DE JUGADORES: Diseño apilado para que no choquen */
+.players {
+  display: flex;
+  align-items: center;
+  padding: 4px 6px 4px 12px;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  margin-right: 4px;
 }
 
-.separador {
-  height: 2px;
-  margin: 4px 6px;
-  background: var(--accent-soft);
+.player {
+  width: 32px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+  margin-left: -12px; /* Margen negativo para que se superpongan */
+  border: 2px solid var(--panel); /* Borde para separarlos visualmente */
+  color: #1b1740;
+  font-family: 'Press Start 2P', monospace;
+  font-size: 0.55rem;
+  position: relative;
+  z-index: 1;
+  transition: transform 0.2s, z-index 0.2s;
 }
 
-.atajo {
-  font-size: 0.95rem;
-  opacity: 0.7;
+.player:hover {
+  z-index: 10;
+  transform: translateY(-3px);
+}
+
+.player.yo {
+  outline: 2px solid var(--text);
+  outline-offset: -2px;
+  z-index: 2;
+}
+
+.player.mas {
+  background: var(--text);
+  color: var(--panel);
+  z-index: 3;
 }
 
 .icono-btn {
-  width: 42px;
+  width: 40px;
   padding: 0;
   font-family: 'VT323', monospace;
   font-size: 1.6rem;
 }
-
-.icono-btn.apagado {
-  opacity: 0.5;
-  text-decoration: line-through;
-}
+.icono-btn.apagado { opacity: 0.5; text-decoration: line-through; }
 
 .main-content {
   flex: 1;
   display: flex;
   flex-direction: column;
   align-items: center;
-  padding: 0;
+  padding: 1.25rem 1rem 3.5rem;
 }
 
-.zen-salir {
-  position: fixed;
-  top: 14px;
-  right: 14px;
-  z-index: 60;
-}
+.zen-salir { position: fixed; top: 14px; right: 14px; z-index: 60; }
 
 .toast {
   position: fixed;
@@ -461,160 +484,61 @@ onUnmounted(() => window.removeEventListener('keydown', alTeclear))
   animation: pop 0.2s ease-out;
 }
 
-.modal-fondo {
-  position: fixed;
-  inset: 0;
-  z-index: 120;
-  display: grid;
-  place-items: center;
-  padding: 20px;
-  background: rgba(5, 5, 5, 0.55);
+/* Modales */
+.modal-fondo { position: fixed; inset: 0; z-index: 120; display: grid; place-items: center; padding: 20px; background: rgba(5, 5, 5, 0.55); }
+.modal { width: min(520px, 100%); max-height: 90vh; overflow-y: auto; padding: 20px 22px 24px; }
+.modal-cabecera { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; font-family: 'Press Start 2P', monospace; font-size: 0.7rem; }
+.modal-texto, .modal-nota { margin: 0 0 14px; color: var(--muted); line-height: 1.2; }
+.campo-copia { display: flex; gap: 10px; margin-bottom: 12px; }
+.campo-copia input { flex: 1; min-width: 0; height: 40px; padding: 0 10px; background: var(--sheet); color: var(--text); border: 3px solid var(--ink); font-size: 1.1rem; outline: none; }
+.codigo-doc { margin-bottom: 16px; font-family: 'Press Start 2P', monospace; font-size: 0.5rem; color: var(--muted); }
+.codigo-doc strong { margin-left: 8px; padding: 3px 8px; background: var(--ink); color: var(--on-ink); }
+.modal-sub { margin: 0 0 8px; font-family: 'Press Start 2P', monospace; font-size: 0.55rem; font-weight: 400; }
+.lista-personas, .atajos-lista { margin: 0 0 12px; padding: 0; list-style: none; }
+.lista-personas li { display: flex; align-items: center; gap: 12px; padding: 7px 0; border-bottom: 2px dashed var(--accent-soft); }
+.chip { width: 30px; height: 30px; display: grid; place-items: center; border: 3px solid var(--ink); color: #1b1740; font-family: 'Press Start 2P', monospace; font-size: 0.55rem; }
+.nombre { flex: 1; font-size: 1.3rem; }
+.nombre em { color: var(--muted); font-style: normal; }
+.lista-personas code { font-family: 'IBM Plex Mono', monospace; font-size: 0.8rem; color: var(--muted); }
+.atajos-lista li { display: flex; align-items: center; gap: 14px; padding: 6px 0; border-bottom: 2px dashed var(--accent-soft); }
+.atajos-lista kbd { min-width: 150px; padding: 3px 8px; background: var(--ink); color: var(--on-ink); font-family: 'IBM Plex Mono', monospace; font-size: 0.78rem; }
+.atajos-lista span { line-height: 1.1; }
+
+/* REGLAS ESTRICTAS PARA CELULAR (Responsive) */
+@media (max-width: 800px) {
+  .doc-title-input {
+    width: min(240px, 30vw);
+  }
 }
 
-.modal {
-  width: min(520px, 100%);
-  max-height: 90vh;
-  overflow-y: auto;
-  padding: 20px 22px 24px;
-}
-
-.modal-cabecera {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 14px;
-  font-family: 'Press Start 2P', monospace;
-  font-size: 0.7rem;
-}
-
-.modal-texto,
-.modal-nota {
-  margin: 0 0 14px;
-  color: var(--muted);
-  line-height: 1.2;
-}
-
-.campo-copia {
-  display: flex;
-  gap: 10px;
-  margin-bottom: 12px;
-}
-
-.campo-copia input {
-  flex: 1;
-  min-width: 0;
-  height: 40px;
-  padding: 0 10px;
-  background: var(--sheet);
-  color: var(--text);
-  border: 3px solid var(--ink);
-  font-size: 1.1rem;
-  outline: none;
-}
-
-.codigo-doc {
-  margin-bottom: 16px;
-  font-family: 'Press Start 2P', monospace;
-  font-size: 0.5rem;
-  color: var(--muted);
-}
-
-.codigo-doc strong {
-  margin-left: 8px;
-  padding: 3px 8px;
-  background: var(--ink);
-  color: var(--on-ink);
-}
-
-.modal-sub {
-  margin: 0 0 8px;
-  font-family: 'Press Start 2P', monospace;
-  font-size: 0.55rem;
-  font-weight: 400;
-}
-
-.lista-personas,
-.atajos-lista {
-  margin: 0 0 12px;
-  padding: 0;
-  list-style: none;
-}
-
-.lista-personas li {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 7px 0;
-  border-bottom: 2px dashed var(--accent-soft);
-}
-
-.chip {
-  width: 30px;
-  height: 30px;
-  display: grid;
-  place-items: center;
-  border: 3px solid var(--ink);
-  color: #1b1740;
-  font-family: 'Press Start 2P', monospace;
-  font-size: 0.55rem;
-}
-
-.nombre {
-  flex: 1;
-  font-size: 1.3rem;
-}
-
-.nombre em {
-  color: var(--muted);
-  font-style: normal;
-}
-
-.lista-personas code {
-  font-family: 'IBM Plex Mono', monospace;
-  font-size: 0.8rem;
-  color: var(--muted);
-}
-
-.atajos-lista li {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  padding: 6px 0;
-  border-bottom: 2px dashed var(--accent-soft);
-}
-
-.atajos-lista kbd {
-  min-width: 150px;
-  padding: 3px 8px;
-  background: var(--ink);
-  color: var(--on-ink);
-  font-family: 'IBM Plex Mono', monospace;
-  font-size: 0.78rem;
-}
-
-.atajos-lista span {
-  line-height: 1.1;
-}
-
-/* Responsividad mejorada para móviles */
 @media (max-width: 640px) {
   .logo-badge {
-    display: none;
+    display: none; /* Ocultamos el logo en móvil */
+  }
+  
+  .players {
+    display: none; /* Ocultamos los avatares en móvil para que no ocupen todo el espacio */
   }
   
   .px-navbar {
+    flex-wrap: wrap; /* Permite que los elementos bajen si no caben */
     justify-content: center;
-    padding: 10px 8px;
-    gap: 8px;
+    padding: 8px 6px;
+    gap: 12px;
   }
 
   .nav-left, .nav-right {
     justify-content: center;
+    width: 100%;
+  }
+
+  .nav-right {
+    gap: 8px;
   }
 
   .doc-title-input {
     width: 100%;
-    max-width: none;
+    max-width: 250px;
     text-align: center;
     margin-left: 0;
   }
@@ -625,7 +549,7 @@ onUnmounted(() => window.removeEventListener('keydown', alTeclear))
   }
 
   .cabecera {
-    padding: 8px;
+    padding: 6px;
   }
 }
 </style>
