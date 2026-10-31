@@ -56,6 +56,7 @@
             @drag-over="sobreBloque"
             @drop-block="soltar"
             @drag-end="finArrastre"
+            @drag-touch-move="alArrastreToque"
           />
 
           <button v-if="sesion.sincronizado && bloques.length === 0" class="empty-state" @click="agregarBloqueFinal">
@@ -609,6 +610,20 @@ const sobreBloque = ({ index, despues }) => {
   if (arrastrando.value === null) return
   const actual = destino.value
   if (!actual || actual.index !== index || actual.despues !== despues) destino.value = { index, despues }
+}
+
+const alArrastreToque = ({ x, y }) => {
+  if (arrastrando.value === null) return
+  const elemento = document.elementFromPoint(x, y)
+  if (!elemento) return
+  const fila = elemento.closest('.block-row')
+  if (!fila) return
+  const id = fila.getAttribute('data-block-id')
+  const index = bloques.value.findIndex(b => String(b.id) === id)
+  if (index !== -1) {
+    const caja = fila.getBoundingClientRect()
+    sobreBloque({ index, despues: y > caja.top + caja.height / 2 })
+  }
 }
 
 const indicadorDe = (index) => {

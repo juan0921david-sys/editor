@@ -25,6 +25,9 @@
         aria-label="Arrastrar bloque"
         @dragstart="alIniciarArrastre"
         @dragend="$emit('drag-end')"
+        @touchstart.passive="alToqueInicio"
+        @touchmove.prevent="alToqueMover"
+        @touchend.prevent="alToqueFin"
       >
         ⋮⋮
       </span>
@@ -144,7 +147,8 @@ const emit = defineEmits([
   'drag-over',
   'drop-block',
   'drag-end',
-  'pegar-bloques'
+  'pegar-bloques',
+  'drag-touch-move'
 ])
 
 const filaRef = ref(null)
@@ -376,6 +380,23 @@ const alSoltar = (e) => {
   e.preventDefault()
   emit('drop-block')
 }
+
+const alToqueInicio = (e) => {
+  if (bloqueadoPorOtro.value || props.soloLectura) return
+  emit('drag-start', props.index)
+}
+
+const alToqueMover = (e) => {
+  if (bloqueadoPorOtro.value || props.soloLectura || !props.hayArrastre) return
+  const toque = e.touches[0]
+  emit('drag-touch-move', { x: toque.clientX, y: toque.clientY })
+}
+
+const alToqueFin = (e) => {
+  if (!props.hayArrastre) return
+  emit('drop-block')
+  emit('drag-end')
+}
 </script>
 
 <style scoped>
@@ -446,23 +467,28 @@ const alSoltar = (e) => {
   .block-row.editing .block-controls {
     left: auto;
     right: 6px;
-    top: -34px;
+    top: -42px;
     width: auto;
     display: flex;
-    gap: 4px;
+    gap: 6px;
     opacity: 1;
     transform: none;
     pointer-events: auto;
   }
 
   .block-controls .handle {
-    display: none;
+    display: grid;
+    width: 38px;
+    height: 38px;
+    font-size: 1.4rem;
+    background: var(--ink);
+    color: var(--on-ink);
   }
 
   .block-controls button {
-    width: 32px;
-    height: 32px;
-    font-size: 0.95rem;
+    width: 38px;
+    height: 38px;
+    font-size: 1.1rem;
   }
 }
 
