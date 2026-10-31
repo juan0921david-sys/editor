@@ -1,20 +1,9 @@
 <template>
-  <div class="barra px-panel no-print" @mousedown.prevent>
-    <div class="grupo desplegable">
-      <button class="sel" :disabled="!sesion.activo" title="Tipo de bloque" @click.stop="alternar('tipo')">
+  <div class="barra px-panel no-print" @mousedown.prevent @scroll="cerrar">
+    <div class="grupo">
+      <button class="sel" :disabled="!sesion.activo" title="Tipo de bloque" @click.stop="alternar('tipo', $event)">
         <span>{{ etiquetaTipo }}</span><i>▾</i>
       </button>
-      <div v-if="abierto === 'tipo' && sesion.activo" class="popover px-panel">
-        <button
-          v-for="t in TIPOS"
-          :key="t.id"
-          class="opcion"
-          :class="{ actual: t.id === sesion.activo.tipo }"
-          @click="elegirTipo(t.id)"
-        >
-          <span class="icono">{{ t.icono }}</span><span>{{ t.etiqueta }}</span>
-        </button>
-      </div>
     </div>
 
     <div class="grupo">
@@ -22,15 +11,10 @@
       <button class="tool-btn" title="Rehacer (Ctrl+Y)" @click="emitir('rehacer-documento')">↷</button>
     </div>
 
-    <div class="grupo desplegable">
-      <button class="sel ancho" title="Fuente" @click.stop="alternar('fuente')">
+    <div class="grupo">
+      <button class="sel ancho" title="Fuente" @click.stop="alternar('fuente', $event)">
         <span :style="{ fontFamily: `'${fuenteActual}'` }">{{ fuenteActual }}</span><i>▾</i>
       </button>
-      <div v-if="abierto === 'fuente'" class="popover px-panel">
-        <button v-for="f in FUENTES" :key="f" class="opcion" :class="{ actual: f === fuenteActual }" :style="{ fontFamily: `'${f}'` }" @click="aplicarFuente(f)">
-          {{ f }}
-        </button>
-      </div>
       <button class="tool-btn" title="Reducir tamaño" @click="cambiarTamano(-1)">−</button>
       <span class="valor">{{ tamanoActual }}</span>
       <button class="tool-btn" title="Aumentar tamaño" @click="cambiarTamano(1)">+</button>
@@ -49,23 +33,12 @@
     </div>
 
     <div class="grupo">
-      <div class="desplegable">
-        <button class="tool-btn" title="Color del texto" @click.stop="alternar('color')">
-          <span class="letra-a">A</span><i class="muestra" :style="{ background: ultimoColor }"></i>
-        </button>
-        <div v-if="abierto === 'color'" class="popover paleta px-panel">
-          <button v-for="c in COLORES_TEXTO" :key="c" class="cuadro" :style="{ background: c }" :title="c" @click="aplicarColor('foreColor', c)"></button>
-        </div>
-      </div>
-      <div class="desplegable">
-        <button class="tool-btn" title="Resaltado" @click.stop="alternar('fondo')">
-          <span class="letra-a resaltada">A</span><i class="muestra" :style="{ background: ultimoFondo }"></i>
-        </button>
-        <div v-if="abierto === 'fondo'" class="popover paleta px-panel">
-          <button v-for="c in COLORES_FONDO" :key="c" class="cuadro" :style="{ background: c }" :title="c" @click="aplicarColor('hiliteColor', c)"></button>
-          <button class="cuadro quitar-fondo" title="Quitar resaltado" @click="aplicarColor('hiliteColor', 'transparent')">×</button>
-        </div>
-      </div>
+      <button class="tool-btn" title="Color del texto" @click.stop="alternar('color', $event)">
+        <span class="letra-a">A</span><i class="muestra" :style="{ background: ultimoColor }"></i>
+      </button>
+      <button class="tool-btn" title="Resaltado" @click.stop="alternar('fondo', $event)">
+        <span class="letra-a resaltada">A</span><i class="muestra" :style="{ background: ultimoFondo }"></i>
+      </button>
     </div>
 
     <div class="grupo">
@@ -86,18 +59,71 @@
     <div class="grupo">
       <button class="px-btn primary add-btn" @click="emitir('agregar-bloque-final')">+ BLOQUE</button>
     </div>
-
-    <div class="grupo zoom">
-      <button class="tool-btn" title="Alejar" @click="cambiarZoom(-10)">−</button>
-      <span class="valor ancho-zoom">{{ sesion.zoom }}%</span>
-      <button class="tool-btn" title="Acercar" @click="cambiarZoom(10)">+</button>
-    </div>
   </div>
+
+  <Teleport to="body">
+    <div
+      v-if="abierto && (abierto !== 'tipo' || sesion.activo)"
+      class="popover px-panel no-print"
+      :class="{ paleta: abierto === 'color' || abierto === 'fondo' }"
+      :style="{ top: posicion.top + 'px', left: posicion.left + 'px' }"
+      @mousedown.prevent
+      @click.stop
+    >
+      <template v-if="abierto === 'tipo'">
+        <button
+          v-for="t in TIPOS"
+          :key="t.id"
+          class="opcion"
+          :class="{ actual: t.id === sesion.activo.tipo }"
+          @click="elegirTipo(t.id)"
+        >
+          <span class="icono">{{ t.icono }}</span><span>{{ t.etiqueta }}</span>
+        </button>
+      </template>
+
+      <template v-else-if="abierto === 'fuente'">
+        <button
+          v-for="f in FUENTES"
+          :key="f"
+          class="opcion"
+          :class="{ actual: f === fuenteActual }"
+          :style="{ fontFamily: `'${f}'` }"
+          @click="aplicarFuente(f)"
+        >
+          {{ f }}
+        </button>
+      </template>
+
+      <template v-else-if="abierto === 'color'">
+        <button
+          v-for="c in COLORES_TEXTO"
+          :key="c"
+          class="cuadro"
+          :style="{ background: c }"
+          :title="c"
+          @click="aplicarColor('foreColor', c)"
+        ></button>
+      </template>
+
+      <template v-else-if="abierto === 'fondo'">
+        <button
+          v-for="c in COLORES_FONDO"
+          :key="c"
+          class="cuadro"
+          :style="{ background: c }"
+          :title="c"
+          @click="aplicarColor('hiliteColor', c)"
+        ></button>
+        <button class="cuadro quitar-fondo" title="Quitar resaltado" @click="aplicarColor('hiliteColor', 'transparent')">×</button>
+      </template>
+    </div>
+  </Teleport>
 </template>
 
 <script setup>
 import { ref, reactive, computed, onMounted, onUnmounted } from 'vue'
-import { sesion, cambiarZoom } from '../stores/sesion'
+import { sesion } from '../stores/sesion'
 import { TIPOS, etiquetaDeTipo } from '../utils/tipos'
 import { FUENTES, nombreFuente } from '../utils/sanitizar'
 import { sonidos } from '../utils/sonidos'
@@ -132,6 +158,7 @@ const activos = reactive({
 })
 
 const abierto = ref(null)
+const posicion = ref({ top: 0, left: 0 })
 const tamanoActual = ref(16)
 const fuenteActual = ref('IBM Plex Mono')
 const ultimoColor = ref('#B9A9E8')
@@ -141,8 +168,21 @@ const etiquetaTipo = computed(() => (sesion.activo ? etiquetaDeTipo(sesion.activ
 
 const emitir = (nombre, detalle) => window.dispatchEvent(new CustomEvent(nombre, { detail: detalle }))
 
-const alternar = (nombre) => {
-  abierto.value = abierto.value === nombre ? null : nombre
+const ANCHO_LISTA = 230
+const ANCHO_PALETA = 172
+
+const alternar = (nombre, evento) => {
+  if (abierto.value === nombre) {
+    abierto.value = null
+    return
+  }
+  const caja = evento.currentTarget.getBoundingClientRect()
+  const ancho = nombre === 'color' || nombre === 'fondo' ? ANCHO_PALETA : ANCHO_LISTA
+  posicion.value = {
+    top: Math.round(caja.bottom + 8),
+    left: Math.round(Math.max(8, Math.min(caja.left, window.innerWidth - ancho - 8)))
+  }
+  abierto.value = nombre
 }
 
 const editorActual = () => {
@@ -177,7 +217,9 @@ const actualizarEstado = () => {
   })
   if (!editor) return
   const nodo = window.getSelection().anchorNode
+  if (!nodo) return
   const elemento = nodo.nodeType === 1 ? nodo : nodo.parentElement
+  if (!elemento) return
   const estilo = getComputedStyle(elemento)
   tamanoActual.value = Math.round(parseFloat(estilo.fontSize)) || 16
   fuenteActual.value = nombreFuente(estilo.fontFamily) || 'IBM Plex Mono'
@@ -284,41 +326,41 @@ const cerrar = () => {
 onMounted(() => {
   document.addEventListener('selectionchange', actualizarEstado)
   document.addEventListener('click', cerrar)
+  window.addEventListener('resize', cerrar)
+  window.addEventListener('scroll', cerrar, true)
 })
 
 onUnmounted(() => {
   document.removeEventListener('selectionchange', actualizarEstado)
   document.removeEventListener('click', cerrar)
+  window.removeEventListener('resize', cerrar)
+  window.removeEventListener('scroll', cerrar, true)
 })
 </script>
 
 <style scoped>
 .barra {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   align-items: center;
-  gap: 4px 0;
   padding: 6px 8px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  overscroll-behavior-x: contain;
+  scrollbar-width: thin;
+  -webkit-overflow-scrolling: touch;
 }
 
 .grupo {
+  flex: 0 0 auto;
   display: flex;
   align-items: center;
   gap: 2px;
   padding: 0 8px;
-  position: relative;
 }
 
 .grupo + .grupo {
   border-left: 2px solid var(--accent-soft);
-}
-
-.zoom {
-  margin-left: auto;
-}
-
-.desplegable {
-  position: relative;
 }
 
 .sel {
@@ -354,6 +396,7 @@ onUnmounted(() => {
 
 .tool-btn {
   position: relative;
+  flex: 0 0 auto;
   width: 34px;
   height: 34px;
   display: grid;
@@ -413,10 +456,6 @@ onUnmounted(() => {
   font-size: 1.25rem;
 }
 
-.ancho-zoom {
-  min-width: 46px;
-}
-
 .letra-a {
   font-family: 'IBM Plex Mono', monospace;
   font-weight: 700;
@@ -440,15 +479,15 @@ onUnmounted(() => {
 
 .add-btn {
   height: 34px;
+  white-space: nowrap;
 }
 
 .popover {
-  position: absolute;
-  top: calc(100% + 10px);
-  left: 0;
+  position: fixed;
   z-index: 70;
-  min-width: 190px;
-  max-height: 340px;
+  width: 230px;
+  max-width: calc(100vw - 16px);
+  max-height: min(340px, 70vh);
   overflow-y: auto;
   padding: 6px;
   display: flex;
@@ -487,7 +526,6 @@ onUnmounted(() => {
   flex-wrap: wrap;
   gap: 6px;
   width: 172px;
-  min-width: 0;
 }
 
 .cuadro {
@@ -509,13 +547,23 @@ onUnmounted(() => {
   line-height: 1;
 }
 
-@media (max-width: 720px) {
-  .grupo {
-    padding: 0 4px;
+@media (hover: none) {
+  .tool-btn {
+    width: 38px;
+    height: 38px;
+  }
+}
+
+@media (max-width: 699px) {
+  .barra {
+    position: sticky;
+    top: 0;
+    z-index: 50;
+    margin: 8px 8px 0;
   }
 
-  .zoom {
-    display: none;
+  .grupo {
+    padding: 0 6px;
   }
 }
 </style>

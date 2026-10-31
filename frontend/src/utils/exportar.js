@@ -4,6 +4,27 @@ const TIPOS_LISTA = ['lista', 'numerada', 'tarea']
 const ALIN_PDF = { left: 'left', center: 'center', right: 'right', justify: 'justify' }
 const FUENTES_DOCX = { 'IBM Plex Mono': 'Consolas', 'Press Start 2P': 'Courier New', VT323: 'Courier New' }
 
+const PAGINAS = {
+  carta: { pdf: 'LETTER', pt: [612, 792], twips: [12240, 15840] },
+  a4: { pdf: 'A4', pt: [595, 842], twips: [11906, 16838] },
+  oficio: { pdf: { width: 612, height: 936 }, pt: [612, 936], twips: [12240, 18720] }
+}
+
+const MARGENES = {
+  normal: { pt: 72, twips: 1440 },
+  estrecho: { pt: 36, twips: 720 },
+  amplio: { pt: 108, twips: 2160 }
+}
+
+const configuracionPagina = (pagina) => {
+  const tamano = pagina && PAGINAS[pagina.tamano] ? pagina.tamano : 'carta'
+  const margen = pagina && MARGENES[pagina.margen] ? pagina.margen : 'normal'
+  const horizontal = !!pagina && pagina.orientacion === 'horizontal'
+  const base = PAGINAS[tamano]
+  const anchoPt = horizontal ? base.pt[1] : base.pt[0]
+  return { ...base, margen: MARGENES[margen], horizontal, anchoUtilPt: anchoPt - 2 * MARGENES[margen].pt }
+}
+
 const escaparHtml = (texto) =>
   String(texto).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
 
@@ -60,17 +81,14 @@ const htmlAParrafos = (html) => {
   const recorrer = (nodo, estilo, alineacion) => {
     nodo.childNodes.forEach((hijo) => {
       if (hijo.nodeType === 3) {
-        if (!hijo.textContent) return
+        const texto = (hijo.textContent || '').replace(/\u00a0/g, ' ')
+        if (!texto) return
         if (!actual) abrir(alineacion)
-        actual.runs.push({ ...estilo, texto: hijo.textContent })
+        actual.runs.push({ ...estilo, texto })
         return
       }
       if (hijo.nodeType !== 1) return
-      
-      // Sanitización estricta: saltarse botones o inputs que no son texto
       const etiqueta = hijo.tagName
-      if (['BUTTON', 'INPUT', 'SCRIPT', 'STYLE'].includes(etiqueta)) return
-      
       if (etiqueta === 'BR') {
         if (!actual) abrir(alineacion)
         actual.runs.push({ salto: true })
@@ -127,11 +145,9 @@ const unirBloques = (modelo, lineas) =>
   }, '')
 
 const aTxt = (datos) => {
-  const modelo = construirModelo(datos.bloques)
+  const modelo = construirModelo(datos.bloques).filter((b) => b.tipo !== 'salto')
   const lineas = modelo.map((b) => {
     switch (b.tipo) {
-      case 'h1':
-        return b.texto.toUpperCase()
       case 'lista':
         return `• ${b.texto}`
       case 'numerada':
@@ -169,6 +185,8 @@ const runMd = (r) => {
   return `${partes[1]}${nucleo}${partes[3]}`
 }
 
+const SALTO_HTML = '<div style="break-after:page;page-break-after:always"></div>'
+
 const aMd = (datos) => {
   const modelo = construirModelo(datos.bloques)
   const lineas = modelo.map((b) => {
@@ -195,6 +213,8 @@ const aMd = (datos) => {
         return `\`\`\`\n${b.texto}\n\`\`\``
       case 'divisor':
         return '---'
+      case 'salto':
+        return SALTO_HTML
       default:
         return texto
     }
@@ -234,7 +254,7 @@ const aHtml = (datos) => {
         case 'h3':
           return `<h3>${interior}</h3>`
         case 'lista':
-          return `<div class="item"><span class="marca">&#9632;</span><div>${interior}</div></div>`
+          return `<div class="item"><span class="marca">&#9679;</span><div>${interior}</div></div>`
         case 'numerada':
           return `<div class="item"><span class="marca">${b.numero}.</span><div>${interior}</div></div>`
         case 'tarea':
@@ -245,6 +265,8 @@ const aHtml = (datos) => {
           return `<pre>${escaparHtml(b.texto)}</pre>`
         case 'divisor':
           return '<hr>'
+        case 'salto':
+          return SALTO_HTML
         default:
           return `<div class="bloque">${interior}</div>`
       }
@@ -258,15 +280,15 @@ const aHtml = (datos) => {
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${titulo}</title>
 <style>
-body{font-family:Georgia,serif;max-width:820px;margin:48px auto;padding:0 24px;line-height:1.7;color:#1b1740}
-h1,h2,h3{color:#2b2563;line-height:1.3}
+body{font-family:Georgia,serif;max-width:820px;margin:48px auto;padding:0 24px;line-height:1.7;color:#000}
+h1,h2,h3{line-height:1.3}
 .bloque{margin-bottom:10px}
 .item{display:flex;gap:10px;margin-bottom:4px}
-.marca{color:#2b2563;min-width:22px}
-.hecho{opacity:.55;text-decoration:line-through}
-blockquote{margin:14px 0;padding:8px 16px;border-left:5px solid #b9a9e8;background:#f4f1fd;font-style:italic}
-pre{background:#f1eefb;border:2px solid #2b2563;padding:14px;overflow:auto;font-family:Consolas,monospace}
-hr{border:0;border-top:3px dotted #2b2563;margin:24px 0}
+.marca{min-width:22px}
+.hecho{opacity:.6;text-decoration:line-through}
+blockquote{margin:14px 0;padding:4px 16px;border-left:4px solid #999;font-style:italic}
+pre{background:#f3f3f3;border:1px solid #ccc;padding:14px;overflow:auto;font-family:Consolas,monospace}
+hr{border:0;border-top:1px solid #999;margin:24px 0}
 </style>
 </head>
 <body>
@@ -283,6 +305,7 @@ const aPdf = async (datos) => {
   if (typeof pdfMake.addVirtualFileSystem === 'function') pdfMake.addVirtualFileSystem(vfs)
   else pdfMake.vfs = vfs
 
+  const pagina = configuracionPagina(datos.pagina)
   const modelo = construirModelo(datos.bloques)
 
   const runPdf = (r) => {
@@ -311,10 +334,10 @@ const aPdf = async (datos) => {
   })
 
   const casilla = (hecho) => {
-    const trazos = [{ type: 'rect', x: 0, y: 2, w: 10, h: 10, lineWidth: 1.2, lineColor: '#2B2563' }]
+    const trazos = [{ type: 'rect', x: 0, y: 2, w: 10, h: 10, lineWidth: 1.2, lineColor: '#000000' }]
     if (hecho) {
-      trazos.push({ type: 'line', x1: 2, y1: 7, x2: 4.5, y2: 10, lineWidth: 1.6, lineColor: '#2B2563' })
-      trazos.push({ type: 'line', x1: 4.5, y1: 10, x2: 9, y2: 3.5, lineWidth: 1.6, lineColor: '#2B2563' })
+      trazos.push({ type: 'line', x1: 2, y1: 7, x2: 4.5, y2: 10, lineWidth: 1.6, lineColor: '#000000' })
+      trazos.push({ type: 'line', x1: 4.5, y1: 10, x2: 9, y2: 3.5, lineWidth: 1.6, lineColor: '#000000' })
     }
     return { width: 18, canvas: trazos }
   }
@@ -322,37 +345,36 @@ const aPdf = async (datos) => {
   const bloquePdf = (b) => {
     switch (b.tipo) {
       case 'h1':
-        return { ...cuerpo(b, { fontSize: 20, bold: true, color: '#2B2563' }), margin: [0, 14, 0, 6] }
+        return { ...cuerpo(b, { fontSize: 20, bold: true }), margin: [0, 14, 0, 6] }
       case 'h2':
-        return { ...cuerpo(b, { fontSize: 16, bold: true, color: '#2B2563' }), margin: [0, 10, 0, 5] }
+        return { ...cuerpo(b, { fontSize: 16, bold: true }), margin: [0, 10, 0, 5] }
       case 'h3':
-        return { ...cuerpo(b, { fontSize: 13, bold: true, color: '#2B2563' }), margin: [0, 8, 0, 4] }
+        return { ...cuerpo(b, { fontSize: 13, bold: true }), margin: [0, 8, 0, 4] }
       case 'lista':
         return {
-          columns: [{ width: 16, text: '•', bold: true, color: '#2B2563' }, { width: '*', ...cuerpo(b) }],
+          columns: [{ width: 16, text: '•' }, { width: '*', ...cuerpo(b) }],
           margin: [8, 0, 0, 3]
         }
       case 'numerada':
         return {
-          columns: [{ width: 24, text: `${b.numero}.`, color: '#2B2563' }, { width: '*', ...cuerpo(b) }],
+          columns: [{ width: 24, text: `${b.numero}.` }, { width: '*', ...cuerpo(b) }],
           margin: [8, 0, 0, 3]
         }
       case 'tarea':
         return {
           columns: [
             casilla(b.hecho),
-            { width: '*', ...cuerpo(b, b.hecho ? { color: '#8A85B5', decoration: 'lineThrough' } : {}) }
+            { width: '*', ...cuerpo(b, b.hecho ? { color: '#777777', decoration: 'lineThrough' } : {}) }
           ],
           margin: [8, 0, 0, 3]
         }
       case 'cita':
         return {
-          table: { widths: ['*'], body: [[{ ...cuerpo(b, { italics: true, color: '#4A4580' }), margin: [10, 5, 5, 5] }]] },
+          table: { widths: ['*'], body: [[{ ...cuerpo(b, { italics: true }), margin: [10, 3, 5, 3] }]] },
           layout: {
             hLineWidth: () => 0,
             vLineWidth: (i) => (i === 0 ? 3 : 0),
-            vLineColor: () => '#B9A9E8',
-            fillColor: () => '#F4F1FD'
+            vLineColor: () => '#999999'
           },
           margin: [0, 6, 0, 8]
         }
@@ -360,20 +382,20 @@ const aPdf = async (datos) => {
         return {
           table: {
             widths: ['*'],
-            body: [[{ text: b.texto || ' ', fontSize: 9.5, color: '#2B2563', preserveLeadingSpaces: true, margin: [8, 6, 8, 6] }]]
+            body: [[{ text: b.texto || ' ', fontSize: 9.5, preserveLeadingSpaces: true, margin: [8, 6, 8, 6] }]]
           },
           layout: {
-            hLineWidth: () => 1,
-            vLineWidth: () => 1,
-            hLineColor: () => '#B9A9E8',
-            vLineColor: () => '#B9A9E8',
-            fillColor: () => '#F1EEFB'
+            hLineWidth: () => 0.7,
+            vLineWidth: () => 0.7,
+            hLineColor: () => '#CCCCCC',
+            vLineColor: () => '#CCCCCC',
+            fillColor: () => '#F3F3F3'
           },
           margin: [0, 6, 0, 8]
         }
       case 'divisor':
         return {
-          canvas: [{ type: 'line', x1: 0, y1: 0, x2: 483, y2: 0, lineWidth: 1.2, lineColor: '#B9A9E8', dash: { length: 4 } }],
+          canvas: [{ type: 'line', x1: 0, y1: 0, x2: pagina.anchoUtilPt, y2: 0, lineWidth: 0.8, lineColor: '#999999' }],
           margin: [0, 10, 0, 10]
         }
       default:
@@ -381,23 +403,30 @@ const aPdf = async (datos) => {
     }
   }
 
-  const titulo = datos.titulo || 'Documento'
+  const contenido = []
+  let saltoPendiente = false
+  modelo.forEach((b) => {
+    if (b.tipo === 'salto') {
+      saltoPendiente = true
+      return
+    }
+    const nodo = bloquePdf(b)
+    if (saltoPendiente) {
+      nodo.pageBreak = 'before'
+      saltoPendiente = false
+    }
+    contenido.push(nodo)
+  })
+
+  const margen = pagina.margen.pt
 
   const definicion = {
-    pageSize: 'A4',
-    pageMargins: [56, 64, 56, 64],
-    info: { title: titulo, author: datos.autor || 'Editor_Docs', creator: 'Editor_Docs' },
-    defaultStyle: { font: 'Roboto', fontSize: 11, lineHeight: 1.35, color: '#1B1740' },
-    content: [
-      ...modelo.map(bloquePdf)
-    ],
-    footer: (pagina, total) => ({
-      text: `${titulo}  ·  ${pagina} / ${total}`,
-      alignment: 'center',
-      fontSize: 8,
-      color: '#8A85B5',
-      margin: [0, 18, 0, 0]
-    })
+    pageSize: pagina.pdf,
+    pageOrientation: pagina.horizontal ? 'landscape' : 'portrait',
+    pageMargins: [margen, margen, margen, margen],
+    info: { title: datos.titulo || 'Documento', ...(datos.autor ? { author: datos.autor } : {}) },
+    defaultStyle: { font: 'Roboto', fontSize: 11, lineHeight: 1.35, color: '#000000' },
+    content: contenido.length ? contenido : [{ text: ' ' }]
   }
 
   const archivo = pdfMake.createPdf(definicion)
@@ -424,8 +453,7 @@ const aDocx = async (datos) => {
     UnderlineType,
     BorderStyle,
     ShadingType,
-    Footer,
-    PageNumber,
+    PageOrientation,
     LevelFormat
   } = docx
 
@@ -436,9 +464,17 @@ const aDocx = async (datos) => {
     justify: AlignmentType.JUSTIFIED
   }
 
+  const pagina = configuracionPagina(datos.pagina)
   const modelo = construirModelo(datos.bloques)
   const referencias = []
   let grupo = 0
+  let romperAntes = false
+
+  const saltoExtra = () => {
+    if (!romperAntes) return {}
+    romperAntes = false
+    return { pageBreakBefore: true }
+  }
 
   const runDocx = (r, base = {}) => {
     if (r.salto) return new TextRun({ break: 1 })
@@ -460,9 +496,10 @@ const aDocx = async (datos) => {
   const parrafosDe = (b, base, extra) => {
     const lineas = b.parrafos.length ? b.parrafos : [{ alineacion: null, runs: [] }]
     return lineas.map(
-      (p) =>
+      (p, i) =>
         new Paragraph({
           ...extra,
+          ...(i === 0 ? saltoExtra() : {}),
           alignment: ALIN[p.alineacion] || AlignmentType.LEFT,
           children: p.runs.length ? p.runs.map((r) => runDocx(r, base)) : [new TextRun({ text: '' })]
         })
@@ -475,7 +512,7 @@ const aDocx = async (datos) => {
     switch (b.tipo) {
       case 'h1':
         hijos.push(
-          ...parrafosDe(b, { bold: true, size: 36, color: '2B2563' }, {
+          ...parrafosDe(b, { bold: true, size: 36 }, {
             heading: HeadingLevel.HEADING_1,
             spacing: { before: 320, after: 120 }
           })
@@ -483,7 +520,7 @@ const aDocx = async (datos) => {
         break
       case 'h2':
         hijos.push(
-          ...parrafosDe(b, { bold: true, size: 30, color: '2B2563' }, {
+          ...parrafosDe(b, { bold: true, size: 30 }, {
             heading: HeadingLevel.HEADING_2,
             spacing: { before: 240, after: 100 }
           })
@@ -491,7 +528,7 @@ const aDocx = async (datos) => {
         break
       case 'h3':
         hijos.push(
-          ...parrafosDe(b, { bold: true, size: 26, color: '2B2563' }, {
+          ...parrafosDe(b, { bold: true, size: 26 }, {
             heading: HeadingLevel.HEADING_3,
             spacing: { before: 200, after: 80 }
           })
@@ -510,16 +547,15 @@ const aDocx = async (datos) => {
       case 'tarea': {
         if (!b.parrafos.length) b.parrafos.push({ alineacion: null, runs: [] })
         b.parrafos[0].runs.unshift({ texto: b.hecho ? '☑ ' : '☐ ', fuente: 'Segoe UI Symbol' })
-        const base = b.hecho ? { strike: true, color: '8A85B5' } : {}
+        const base = b.hecho ? { strike: true, color: '777777' } : {}
         hijos.push(...parrafosDe(b, base, { indent: { left: 360 }, spacing: { after: 60 } }))
         break
       }
       case 'cita':
         hijos.push(
-          ...parrafosDe(b, { italics: true, color: '4A4580' }, {
+          ...parrafosDe(b, { italics: true }, {
             indent: { left: 360 },
-            border: { left: { style: BorderStyle.SINGLE, size: 18, color: 'B9A9E8', space: 10 } },
-            shading: { type: ShadingType.CLEAR, fill: 'F4F1FD', color: 'auto' },
+            border: { left: { style: BorderStyle.SINGLE, size: 18, color: '999999', space: 10 } },
             spacing: { before: 120, after: 120 }
           })
         )
@@ -528,13 +564,14 @@ const aDocx = async (datos) => {
         const lineas = (b.texto || ' ').split('\n')
         hijos.push(
           new Paragraph({
+            ...saltoExtra(),
             children: lineas.map((linea, i) => new TextRun({ text: linea, font: 'Consolas', size: 19, break: i === 0 ? 0 : 1 })),
-            shading: { type: ShadingType.CLEAR, fill: 'F1EEFB', color: 'auto' },
+            shading: { type: ShadingType.CLEAR, fill: 'F3F3F3', color: 'auto' },
             border: {
-              top: { style: BorderStyle.SINGLE, size: 4, color: 'B9A9E8', space: 4 },
-              bottom: { style: BorderStyle.SINGLE, size: 4, color: 'B9A9E8', space: 4 },
-              left: { style: BorderStyle.SINGLE, size: 4, color: 'B9A9E8', space: 4 },
-              right: { style: BorderStyle.SINGLE, size: 4, color: 'B9A9E8', space: 4 }
+              top: { style: BorderStyle.SINGLE, size: 4, color: 'CCCCCC', space: 4 },
+              bottom: { style: BorderStyle.SINGLE, size: 4, color: 'CCCCCC', space: 4 },
+              left: { style: BorderStyle.SINGLE, size: 4, color: 'CCCCCC', space: 4 },
+              right: { style: BorderStyle.SINGLE, size: 4, color: 'CCCCCC', space: 4 }
             },
             spacing: { before: 120, after: 160 }
           })
@@ -544,19 +581,25 @@ const aDocx = async (datos) => {
       case 'divisor':
         hijos.push(
           new Paragraph({
+            ...saltoExtra(),
             children: [new TextRun({ text: '' })],
-            border: { bottom: { style: BorderStyle.DOTTED, size: 8, color: 'B9A9E8', space: 1 } },
+            border: { bottom: { style: BorderStyle.SINGLE, size: 6, color: '999999', space: 1 } },
             spacing: { before: 160, after: 160 }
           })
         )
+        break
+      case 'salto':
+        romperAntes = true
         break
       default:
         hijos.push(...parrafosDe(b, {}, { spacing: { after: 120 } }))
     }
   })
 
+  const margen = pagina.margen.twips
+
   const documento = new Document({
-    creator: datos.autor || 'Editor_Docs',
+    ...(datos.autor ? { creator: datos.autor } : {}),
     title: datos.titulo || 'Documento',
     styles: { default: { document: { run: { font: 'Calibri', size: 22 } } } },
     numbering: {
@@ -575,24 +618,17 @@ const aDocx = async (datos) => {
     },
     sections: [
       {
-        properties: { page: { margin: { top: 1134, bottom: 1134, left: 1247, right: 1247 } } },
-        footers: {
-          default: new Footer({
-            children: [
-              new Paragraph({
-                alignment: AlignmentType.CENTER,
-                children: [
-                  new TextRun({
-                    children: ['Página ', PageNumber.CURRENT, ' de ', PageNumber.TOTAL_PAGES],
-                    size: 16,
-                    color: '8A85B5'
-                  })
-                ]
-              })
-            ]
-          })
+        properties: {
+          page: {
+            size: {
+              width: pagina.twips[0],
+              height: pagina.twips[1],
+              orientation: pagina.horizontal ? PageOrientation.LANDSCAPE : PageOrientation.PORTRAIT
+            },
+            margin: { top: margen, bottom: margen, left: margen, right: margen }
+          }
         },
-        children: hijos
+        children: hijos.length ? hijos : [new Paragraph({ children: [new TextRun({ text: '' })] })]
       }
     ]
   })
@@ -613,4 +649,4 @@ export const exportar = async (formato, datos) => {
   } else if (formato === 'docx') {
     descargar(await aDocx(datos), `${base}.docx`)
   }
-} 
+}

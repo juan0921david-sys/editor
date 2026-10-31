@@ -2,6 +2,20 @@ import { reactive, watch } from 'vue'
 
 export const COLORES = ['#B9A9E8', '#8B7BE0', '#6F6BD9', '#E8A9D6', '#7FE0C3', '#F2C66D']
 
+export const TAMANOS_PAGINA = {
+  carta: { etiqueta: 'CARTA', ancho: 816, alto: 1056, cm: [21.6, 27.9] },
+  a4: { etiqueta: 'A4', ancho: 794, alto: 1123, cm: [21.0, 29.7] },
+  oficio: { etiqueta: 'OFICIO', ancho: 816, alto: 1248, cm: [21.6, 33.0] }
+}
+
+export const MARGENES_PAGINA = {
+  normal: { etiqueta: 'NORMAL', px: 96, cm: '2,54 cm' },
+  estrecho: { etiqueta: 'ESTRECHO', px: 48, cm: '1,27 cm' },
+  amplio: { etiqueta: 'AMPLIO', px: 144, cm: '3,81 cm' }
+}
+
+export const ESPACIO_ENTRE_PAGINAS = 32
+
 const leer = (clave, defecto) => {
   try {
     const valor = localStorage.getItem(clave)
@@ -42,6 +56,20 @@ const leerJugador = () => {
   }
 }
 
+const leerPagina = () => {
+  try {
+    const dato = JSON.parse(leer('editor-pagina', 'null'))
+    if (!dato) return null
+    return {
+      tamano: TAMANOS_PAGINA[dato.tamano] ? dato.tamano : 'carta',
+      orientacion: dato.orientacion === 'horizontal' ? 'horizontal' : 'vertical',
+      margen: MARGENES_PAGINA[dato.margen] ? dato.margen : 'normal'
+    }
+  } catch {
+    return null
+  }
+}
+
 const guardado = leerJugador()
 const prefiereOscuro = !!(window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches)
 
@@ -54,6 +82,7 @@ export const sesion = reactive({
   usuarios: [],
   documentoId,
   titulo: '',
+  pagina: leerPagina() || { tamano: 'carta', orientacion: 'vertical', margen: 'normal' },
   sincronizado: false,
   guardado: 'guardado',
   activo: null,
@@ -102,6 +131,31 @@ export const cambiarJugador = () => {
   sesion.activo = null
   sesion.sincronizado = false
   sesion.guardado = 'guardado'
+}
+
+export const configurarPagina = (cambios) => {
+  const siguiente = { ...sesion.pagina, ...cambios }
+  sesion.pagina.tamano = TAMANOS_PAGINA[siguiente.tamano] ? siguiente.tamano : 'carta'
+  sesion.pagina.orientacion = siguiente.orientacion === 'horizontal' ? 'horizontal' : 'vertical'
+  sesion.pagina.margen = MARGENES_PAGINA[siguiente.margen] ? siguiente.margen : 'normal'
+  escribir('editor-pagina', JSON.stringify(sesion.pagina))
+}
+
+export const geometriaPagina = () => {
+  const base = TAMANOS_PAGINA[sesion.pagina.tamano] || TAMANOS_PAGINA.carta
+  const margen = (MARGENES_PAGINA[sesion.pagina.margen] || MARGENES_PAGINA.normal).px
+  const horizontal = sesion.pagina.orientacion === 'horizontal'
+  return {
+    ancho: horizontal ? base.alto : base.ancho,
+    alto: horizontal ? base.ancho : base.alto,
+    margen
+  }
+}
+
+export const dimensionesPagina = () => {
+  const base = TAMANOS_PAGINA[sesion.pagina.tamano] || TAMANOS_PAGINA.carta
+  const [a, b] = sesion.pagina.orientacion === 'horizontal' ? [base.cm[1], base.cm[0]] : base.cm
+  return `${a.toFixed(1).replace('.', ',')} × ${b.toFixed(1).replace('.', ',')} cm`
 }
 
 export const alternarTema = () => {

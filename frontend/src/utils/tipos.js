@@ -8,10 +8,13 @@ export const TIPOS = [
   { id: 'tarea', etiqueta: 'Tarea', descripcion: 'Casilla por completar', icono: '[ ]', claves: ['tarea', 'check', 'todo', 'pendiente'] },
   { id: 'cita', etiqueta: 'Cita', descripcion: 'Texto destacado', icono: '"', claves: ['cita', 'quote'] },
   { id: 'codigo', etiqueta: 'Código', descripcion: 'Bloque monoespaciado', icono: '</>', claves: ['codigo', 'code'] },
-  { id: 'divisor', etiqueta: 'Divisor', descripcion: 'Línea separadora', icono: '--', claves: ['divisor', 'linea', 'hr'] }
+  { id: 'divisor', etiqueta: 'Divisor', descripcion: 'Línea separadora', icono: '--', claves: ['divisor', 'linea', 'hr'] },
+  { id: 'salto', etiqueta: 'Salto de página', descripcion: 'Empieza una página nueva', icono: 'PG', claves: ['salto', 'pagina', 'page', 'break'] }
 ]
 
 export const TIPOS_CON_ENTER_BLOQUE = ['h1', 'h2', 'h3', 'lista', 'numerada', 'tarea']
+
+export const TIPOS_SIN_TEXTO = ['divisor', 'salto']
 
 const sinTildes = (texto) => texto.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
 

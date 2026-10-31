@@ -37,7 +37,6 @@
         </div>
 
         <div class="nav-right">
-          <!-- Avatares de jugadores -->
           <button class="players" title="Quién está en el documento" @click="modal = 'compartir'">
             <span
               v-for="u in visibles"
@@ -51,8 +50,6 @@
             </span>
             <span v-if="extra > 0" class="player mas">+{{ extra }}</span>
           </button>
-          
-          <!-- Controles extra -->
           <button
             class="px-btn icono-btn"
             :class="{ apagado: !sesion.sonido }"
@@ -68,7 +65,10 @@
           >
             {{ sesion.tema === 'dark' ? '☀' : '☾' }}
           </button>
-          <button class="px-btn primary" @click="modal = 'compartir'">COMPARTIR</button>
+          <button class="px-btn primary compartir-btn" title="Compartir" @click="modal = 'compartir'">
+            <span class="solo-escritorio">COMPARTIR</span>
+            <span class="solo-movil">⇪</span>
+          </button>
         </div>
       </header>
 
@@ -83,7 +83,6 @@
 
     <div class="toast px-panel no-print" v-if="sesion.aviso">{{ sesion.aviso }}</div>
 
-    <!-- Modales (Lógica intacta) -->
     <div class="modal-fondo no-print" v-if="modal === 'compartir'" @click.self="modal = null">
       <div class="modal px-panel" role="dialog" aria-label="Compartir documento">
         <div class="modal-cabecera">
@@ -110,6 +109,37 @@
       </div>
     </div>
 
+    <div class="modal-fondo no-print" v-if="modal === 'pagina'" @click.self="modal = null">
+      <div class="modal px-panel" role="dialog" aria-label="Configurar página">
+        <div class="modal-cabecera">
+          <span>CONFIGURAR PÁGINA</span>
+          <button class="px-btn" @click="modal = null">X</button>
+        </div>
+        <div class="grupo-pagina" v-for="grupo in gruposPagina" :key="grupo.clave">
+          <span class="etiqueta-grupo">{{ grupo.titulo }}</span>
+          <div class="opciones-pagina" role="radiogroup" :aria-label="grupo.titulo">
+            <button
+              v-for="op in grupo.opciones"
+              :key="op.valor"
+              type="button"
+              role="radio"
+              :aria-checked="sesion.pagina[grupo.clave] === op.valor"
+              class="opcion-pagina"
+              :class="{ activa: sesion.pagina[grupo.clave] === op.valor }"
+              @click="configurarPagina({ [grupo.clave]: op.valor })"
+            >
+              <strong>{{ op.etiqueta }}</strong>
+              <small>{{ op.detalle }}</small>
+            </button>
+          </div>
+        </div>
+        <p class="modal-nota">
+          Página actual: {{ resumenPagina }}. Se guarda en este navegador y se usa para mostrar, imprimir y exportar el
+          documento; no cambia lo que ven las demás personas.
+        </p>
+      </div>
+    </div>
+
     <div class="modal-fondo no-print" v-if="modal === 'atajos'" @click.self="modal = null">
       <div class="modal px-panel" role="dialog" aria-label="Atajos de teclado">
         <div class="modal-cabecera">
@@ -129,11 +159,15 @@ import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import BarraFormato from '../components/BarraFormato.vue'
 import {
   sesion,
+  TAMANOS_PAGINA,
+  MARGENES_PAGINA,
   alternarTema,
   alternarCrt,
   alternarSonido,
   alternarZen,
   cambiarJugador,
+  configurarPagina,
+  dimensionesPagina,
   crearDocumentoNuevo,
   enlaceDocumento,
   avisar
@@ -143,7 +177,7 @@ const menuActivo = ref(null)
 const modal = ref(null)
 
 const atajos = [
-  ['/', 'Abrir el menú de bloques'],
+  ['/', 'Abrir el menú de bloques (incluye el salto de página)'],
   ['Enter', 'Salto de línea (en títulos y listas crea el siguiente bloque)'],
   ['Ctrl + Enter', 'Nuevo bloque debajo'],
   ['Shift + Enter', 'Salto de línea sin crear párrafo'],
@@ -164,11 +198,47 @@ const jugadores = computed(() =>
     : [{ id: 'yo', uid: sesion.uid, nombre: sesion.nombre, color: sesion.color }]
 )
 
-// Limitamos a 4 para que no rompa el diseño
-const visibles = computed(() => jugadores.value.slice(0, 4))
-const extra = computed(() => Math.max(0, jugadores.value.length - 4))
+const visibles = computed(() => jugadores.value.slice(0, 3))
+const extra = computed(() => Math.max(0, jugadores.value.length - 3))
 const esYo = (u) => u.id === 'yo' || u.id === sesion.miId || u.uid === sesion.uid
 const inicial = (nombre) => (String(nombre || '?').trim()[0] || '?').toUpperCase()
+
+const textoCm = (cm) => `${cm[0].toFixed(1).replace('.', ',')} × ${cm[1].toFixed(1).replace('.', ',')} cm`
+
+const gruposPagina = computed(() => [
+  {
+    clave: 'tamano',
+    titulo: 'TAMAÑO',
+    opciones: Object.entries(TAMANOS_PAGINA).map(([valor, t]) => ({
+      valor,
+      etiqueta: t.etiqueta,
+      detalle: textoCm(t.cm)
+    }))
+  },
+  {
+    clave: 'orientacion',
+    titulo: 'ORIENTACIÓN',
+    opciones: [
+      { valor: 'vertical', etiqueta: 'VERTICAL', detalle: 'Hoja de pie' },
+      { valor: 'horizontal', etiqueta: 'HORIZONTAL', detalle: 'Hoja acostada' }
+    ]
+  },
+  {
+    clave: 'margen',
+    titulo: 'MÁRGENES',
+    opciones: Object.entries(MARGENES_PAGINA).map(([valor, m]) => ({
+      valor,
+      etiqueta: m.etiqueta,
+      detalle: m.cm
+    }))
+  }
+])
+
+const resumenPagina = computed(() => {
+  const base = TAMANOS_PAGINA[sesion.pagina.tamano] || TAMANOS_PAGINA.carta
+  const orientacion = sesion.pagina.orientacion === 'horizontal' ? 'horizontal' : 'vertical'
+  return `${base.etiqueta} ${orientacion}, ${dimensionesPagina()}`
+})
 
 watch(
   () => sesion.titulo,
@@ -190,6 +260,7 @@ const menus = computed(() => [
       { etiqueta: 'Descargar como Markdown (.md)', accion: 'md' },
       { etiqueta: 'Descargar como página web (.html)', accion: 'html' },
       { separador: true },
+      { etiqueta: 'Configurar página...', accion: 'pagina' },
       { etiqueta: 'Imprimir', accion: 'imprimir', atajo: 'Ctrl+P' },
       { separador: true },
       { etiqueta: 'Cambiar jugador', accion: 'jugador' }
@@ -252,6 +323,8 @@ const ejecutarAccion = (accion) => {
     window.dispatchEvent(new CustomEvent('exportar-documento', { detail: { formato: accion } }))
   } else if (accion === 'imprimir') {
     window.print()
+  } else if (accion === 'pagina') {
+    modal.value = 'pagina'
   } else if (accion === 'nuevo') {
     crearDocumentoNuevo()
   } else if (accion === 'jugador') {
@@ -285,8 +358,25 @@ const alTeclear = (e) => {
   }
 }
 
-onMounted(() => window.addEventListener('keydown', alTeclear))
-onUnmounted(() => window.removeEventListener('keydown', alTeclear))
+const abrirCompartir = () => {
+  modal.value = 'compartir'
+}
+
+const abrirConfiguracionPagina = () => {
+  modal.value = 'pagina'
+}
+
+onMounted(() => {
+  window.addEventListener('keydown', alTeclear)
+  window.addEventListener('abrir-compartir', abrirCompartir)
+  window.addEventListener('abrir-configuracion-pagina', abrirConfiguracionPagina)
+})
+
+onUnmounted(() => {
+  window.removeEventListener('keydown', alTeclear)
+  window.removeEventListener('abrir-compartir', abrirCompartir)
+  window.removeEventListener('abrir-configuracion-pagina', abrirConfiguracionPagina)
+})
 </script>
 
 <style scoped>
@@ -294,6 +384,7 @@ onUnmounted(() => window.removeEventListener('keydown', alTeclear))
   display: flex;
   flex-direction: column;
   min-height: 100vh;
+  min-height: 100dvh;
   position: relative;
 }
 
@@ -313,18 +404,27 @@ onUnmounted(() => window.removeEventListener('keydown', alTeclear))
 
 .px-navbar {
   display: flex;
+  flex-wrap: wrap;
   justify-content: space-between;
   align-items: center;
-  gap: 16px;
+  gap: 8px 16px;
   padding: 8px 18px;
 }
 
-.nav-left,
-.nav-right {
+.nav-left {
+  flex: 1 1 300px;
   display: flex;
   align-items: center;
   gap: 12px;
   min-width: 0;
+}
+
+.nav-right {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-left: auto;
 }
 
 .logo-badge {
@@ -339,6 +439,7 @@ onUnmounted(() => window.removeEventListener('keydown', alTeclear))
 }
 
 .doc-controls {
+  flex: 1;
   display: flex;
   flex-direction: column;
   gap: 2px;
@@ -346,7 +447,8 @@ onUnmounted(() => window.removeEventListener('keydown', alTeclear))
 }
 
 .doc-title-input {
-  width: min(340px, 35vw);
+  width: 100%;
+  max-width: 420px;
   margin-left: -6px;
   padding: 0 6px;
   background: transparent;
@@ -354,20 +456,30 @@ onUnmounted(() => window.removeEventListener('keydown', alTeclear))
   border: 2px solid transparent;
   font-size: 1.55rem;
   line-height: 1.2;
+  text-overflow: ellipsis;
   outline: none;
   transition: background 0.15s, border-color 0.15s;
 }
 
-.doc-title-input:hover { border-color: var(--accent-soft); }
-.doc-title-input:focus { border-color: var(--ink); background: var(--accent-soft); }
+.doc-title-input:hover {
+  border-color: var(--accent-soft);
+}
+
+.doc-title-input:focus {
+  border-color: var(--ink);
+  background: var(--accent-soft);
+}
 
 .doc-menu {
   display: flex;
+  flex-wrap: wrap;
   gap: 2px;
   margin-left: -6px;
 }
 
-.menu-container { position: relative; }
+.menu-container {
+  position: relative;
+}
 
 .menu-item {
   padding: 0 10px;
@@ -378,8 +490,15 @@ onUnmounted(() => window.removeEventListener('keydown', alTeclear))
   line-height: 1.4;
   cursor: pointer;
 }
-.menu-item:hover { background: var(--accent-soft); }
-.menu-item.abierto { background: var(--ink); color: var(--on-ink); }
+
+.menu-item:hover {
+  background: var(--accent-soft);
+}
+
+.menu-item.abierto {
+  background: var(--ink);
+  color: var(--on-ink);
+}
 
 .px-dropdown {
   position: absolute;
@@ -387,6 +506,7 @@ onUnmounted(() => window.removeEventListener('keydown', alTeclear))
   left: 0;
   z-index: 60;
   min-width: 290px;
+  max-width: calc(100vw - 24px);
   margin-top: 12px;
   padding: 8px;
   display: flex;
@@ -407,149 +527,374 @@ onUnmounted(() => window.removeEventListener('keydown', alTeclear))
   text-align: left;
   cursor: pointer;
 }
-.dropdown-item:hover { background: var(--accent); color: var(--on-accent); }
-.separador { height: 2px; margin: 4px 6px; background: var(--accent-soft); }
-.atajo { font-size: 0.95rem; opacity: 0.7; }
 
-/* AJUSTE DE JUGADORES: Diseño apilado para que no choquen */
+.dropdown-item:hover {
+  background: var(--accent);
+  color: var(--on-accent);
+}
+
+.separador {
+  height: 2px;
+  margin: 4px 6px;
+  background: var(--accent-soft);
+}
+
+.atajo {
+  font-size: 0.95rem;
+  opacity: 0.7;
+}
+
 .players {
   display: flex;
-  align-items: center;
   padding: 4px 6px 4px 12px;
   background: transparent;
   border: none;
   cursor: pointer;
-  margin-right: 4px;
 }
 
 .player {
-  width: 32px;
-  height: 32px;
+  width: 34px;
+  height: 34px;
   display: grid;
   place-items: center;
-  margin-left: -12px; /* Margen negativo para que se superpongan */
-  border: 2px solid var(--panel); /* Borde para separarlos visualmente */
+  margin-left: -6px;
+  border: 3px solid var(--ink);
+  box-shadow: 2px 2px 0 var(--shadow);
   color: #1b1740;
   font-family: 'Press Start 2P', monospace;
-  font-size: 0.55rem;
-  position: relative;
-  z-index: 1;
-  transition: transform 0.2s, z-index 0.2s;
-}
-
-.player:hover {
-  z-index: 10;
-  transform: translateY(-3px);
+  font-size: 0.6rem;
 }
 
 .player.yo {
   outline: 2px solid var(--text);
-  outline-offset: -2px;
-  z-index: 2;
+  outline-offset: 1px;
 }
 
 .player.mas {
-  background: var(--text);
-  color: var(--panel);
-  z-index: 3;
+  background: var(--panel);
+  color: var(--text);
 }
 
 .icono-btn {
-  width: 40px;
+  width: 42px;
   padding: 0;
   font-family: 'VT323', monospace;
   font-size: 1.6rem;
 }
-.icono-btn.apagado { opacity: 0.5; text-decoration: line-through; }
+
+.icono-btn.apagado {
+  opacity: 0.5;
+  text-decoration: line-through;
+}
+
+.solo-movil {
+  display: none;
+}
 
 .main-content {
   flex: 1;
   display: flex;
   flex-direction: column;
   align-items: center;
-  padding: 1.25rem 1rem 3.5rem;
+  padding: 1.25rem 1rem 4.5rem;
 }
 
-.zen-salir { position: fixed; top: 14px; right: 14px; z-index: 60; }
+.zen-salir {
+  position: fixed;
+  top: 14px;
+  right: 14px;
+  z-index: 60;
+}
 
 .toast {
   position: fixed;
-  bottom: 28px;
+  bottom: 60px;
   left: 50%;
   z-index: 300;
+  max-width: calc(100vw - 24px);
   transform: translateX(-50%);
   padding: 12px 18px;
   font-family: 'Press Start 2P', monospace;
   font-size: 0.6rem;
+  text-align: center;
   animation: pop 0.2s ease-out;
 }
 
-/* Modales */
-.modal-fondo { position: fixed; inset: 0; z-index: 120; display: grid; place-items: center; padding: 20px; background: rgba(5, 5, 5, 0.55); }
-.modal { width: min(520px, 100%); max-height: 90vh; overflow-y: auto; padding: 20px 22px 24px; }
-.modal-cabecera { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; font-family: 'Press Start 2P', monospace; font-size: 0.7rem; }
-.modal-texto, .modal-nota { margin: 0 0 14px; color: var(--muted); line-height: 1.2; }
-.campo-copia { display: flex; gap: 10px; margin-bottom: 12px; }
-.campo-copia input { flex: 1; min-width: 0; height: 40px; padding: 0 10px; background: var(--sheet); color: var(--text); border: 3px solid var(--ink); font-size: 1.1rem; outline: none; }
-.codigo-doc { margin-bottom: 16px; font-family: 'Press Start 2P', monospace; font-size: 0.5rem; color: var(--muted); }
-.codigo-doc strong { margin-left: 8px; padding: 3px 8px; background: var(--ink); color: var(--on-ink); }
-.modal-sub { margin: 0 0 8px; font-family: 'Press Start 2P', monospace; font-size: 0.55rem; font-weight: 400; }
-.lista-personas, .atajos-lista { margin: 0 0 12px; padding: 0; list-style: none; }
-.lista-personas li { display: flex; align-items: center; gap: 12px; padding: 7px 0; border-bottom: 2px dashed var(--accent-soft); }
-.chip { width: 30px; height: 30px; display: grid; place-items: center; border: 3px solid var(--ink); color: #1b1740; font-family: 'Press Start 2P', monospace; font-size: 0.55rem; }
-.nombre { flex: 1; font-size: 1.3rem; }
-.nombre em { color: var(--muted); font-style: normal; }
-.lista-personas code { font-family: 'IBM Plex Mono', monospace; font-size: 0.8rem; color: var(--muted); }
-.atajos-lista li { display: flex; align-items: center; gap: 14px; padding: 6px 0; border-bottom: 2px dashed var(--accent-soft); }
-.atajos-lista kbd { min-width: 150px; padding: 3px 8px; background: var(--ink); color: var(--on-ink); font-family: 'IBM Plex Mono', monospace; font-size: 0.78rem; }
-.atajos-lista span { line-height: 1.1; }
+.modal-fondo {
+  position: fixed;
+  inset: 0;
+  z-index: 120;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgba(5, 5, 5, 0.55);
+}
 
-/* REGLAS ESTRICTAS PARA CELULAR (Responsive) */
-@media (max-width: 800px) {
-  .doc-title-input {
-    width: min(240px, 30vw);
+.modal {
+  width: min(520px, 100%);
+  max-height: 90vh;
+  overflow-y: auto;
+  padding: 20px 22px 24px;
+}
+
+.modal-cabecera {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 14px;
+  font-family: 'Press Start 2P', monospace;
+  font-size: 0.7rem;
+}
+
+.modal-texto,
+.modal-nota {
+  margin: 0 0 14px;
+  color: var(--muted);
+  line-height: 1.2;
+}
+
+.campo-copia {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.campo-copia input {
+  flex: 1;
+  min-width: 0;
+  height: 40px;
+  padding: 0 10px;
+  background: var(--sheet);
+  color: var(--text);
+  border: 3px solid var(--ink);
+  font-size: 1.1rem;
+  outline: none;
+}
+
+.codigo-doc {
+  margin-bottom: 16px;
+  font-family: 'Press Start 2P', monospace;
+  font-size: 0.5rem;
+  color: var(--muted);
+}
+
+.codigo-doc strong {
+  margin-left: 8px;
+  padding: 3px 8px;
+  background: var(--ink);
+  color: var(--on-ink);
+}
+
+.modal-sub {
+  margin: 0 0 8px;
+  font-family: 'Press Start 2P', monospace;
+  font-size: 0.55rem;
+  font-weight: 400;
+}
+
+.lista-personas,
+.atajos-lista {
+  margin: 0 0 12px;
+  padding: 0;
+  list-style: none;
+}
+
+.lista-personas li {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 7px 0;
+  border-bottom: 2px dashed var(--accent-soft);
+}
+
+.chip {
+  width: 30px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  border: 3px solid var(--ink);
+  color: #1b1740;
+  font-family: 'Press Start 2P', monospace;
+  font-size: 0.55rem;
+}
+
+.nombre {
+  flex: 1;
+  font-size: 1.3rem;
+}
+
+.nombre em {
+  color: var(--muted);
+  font-style: normal;
+}
+
+.lista-personas code {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+.grupo-pagina {
+  margin-bottom: 16px;
+}
+
+.etiqueta-grupo {
+  display: block;
+  margin-bottom: 8px;
+  color: var(--muted);
+  font-family: 'Press Start 2P', monospace;
+  font-size: 0.5rem;
+}
+
+.opciones-pagina {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.opcion-pagina {
+  flex: 1 1 110px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 8px;
+  background: var(--sheet);
+  color: var(--text);
+  border: 3px solid var(--ink);
+  box-shadow: 3px 3px 0 var(--shadow);
+  text-align: left;
+  cursor: pointer;
+}
+
+.opcion-pagina strong {
+  font-family: 'Press Start 2P', monospace;
+  font-size: 0.5rem;
+  font-weight: 400;
+}
+
+.opcion-pagina small {
+  color: var(--muted);
+  font-size: 1.05rem;
+}
+
+.opcion-pagina:hover {
+  background: var(--accent-soft);
+}
+
+.opcion-pagina.activa {
+  background: var(--accent);
+  color: var(--on-accent);
+}
+
+.opcion-pagina.activa small {
+  color: var(--on-accent);
+}
+
+.atajos-lista li {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 6px 0;
+  border-bottom: 2px dashed var(--accent-soft);
+}
+
+.atajos-lista kbd {
+  min-width: 150px;
+  padding: 3px 8px;
+  background: var(--ink);
+  color: var(--on-ink);
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 0.78rem;
+}
+
+.atajos-lista span {
+  line-height: 1.1;
+}
+
+@media (max-width: 900px) {
+  .logo-badge {
+    display: none;
   }
 }
 
-@media (max-width: 640px) {
-  .logo-badge {
-    display: none; /* Ocultamos el logo en móvil */
+@media (max-width: 699px) {
+  .cabecera {
+    display: contents;
   }
-  
-  .players {
-    display: none; /* Ocultamos los avatares en móvil para que no ocupen todo el espacio */
-  }
-  
+
   .px-navbar {
-    flex-wrap: wrap; /* Permite que los elementos bajen si no caben */
-    justify-content: center;
-    padding: 8px 6px;
-    gap: 12px;
+    position: relative;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas:
+      'titulo acciones'
+      'menu menu';
+    align-items: center;
+    margin: 8px 8px 0;
+    padding: 6px 10px;
+    gap: 2px 8px;
   }
 
-  .nav-left, .nav-right {
-    justify-content: center;
-    width: 100%;
-  }
-
-  .nav-right {
-    gap: 8px;
+  .nav-left,
+  .doc-controls {
+    display: contents;
   }
 
   .doc-title-input {
-    width: 100%;
-    max-width: 250px;
-    text-align: center;
-    margin-left: 0;
+    grid-area: titulo;
+    max-width: none;
+    font-size: 1.4rem;
   }
-  
+
   .doc-menu {
-    justify-content: center;
+    grid-area: menu;
+  }
+
+  .nav-right {
+    grid-area: acciones;
+    gap: 6px;
     margin-left: 0;
   }
 
-  .cabecera {
-    padding: 6px;
+  .players,
+  .solo-escritorio {
+    display: none;
+  }
+
+  .solo-movil {
+    display: inline;
+  }
+
+  .icono-btn {
+    width: 38px;
+    height: 38px;
+  }
+
+  .compartir-btn {
+    width: 42px;
+    padding: 0;
+    font-size: 0.9rem;
+  }
+
+  .menu-container {
+    position: static;
+  }
+
+  .px-dropdown {
+    top: auto;
+    left: 8px;
+    right: 8px;
+    min-width: 0;
+    max-width: none;
+    margin-top: 10px;
+  }
+
+  .toast {
+    bottom: 56px;
+  }
+
+  .modal {
+    padding: 16px 14px 20px;
   }
 }
 </style>
