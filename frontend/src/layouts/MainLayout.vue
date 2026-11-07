@@ -54,14 +54,14 @@
             class="px-btn icono-btn"
             :class="{ apagado: !sesion.sonido }"
             :title="sesion.sonido ? 'Silenciar sonidos' : 'Activar sonidos'"
-            @click="alternarSonido"
+            @click="sesion.alternarSonido"
           >
             ♪
           </button>
           <button
             class="px-btn icono-btn"
             :title="sesion.tema === 'dark' ? 'Cambiar a modo claro' : 'Cambiar a modo oscuro'"
-            @click="alternarTema"
+            @click="sesion.alternarTema"
           >
             {{ sesion.tema === 'dark' ? '☀' : '☾' }}
           </button>
@@ -75,7 +75,7 @@
       <BarraFormato />
     </div>
 
-    <button v-if="sesion.zen" class="px-btn zen-salir no-print" @click="alternarZen">SALIR DEL MODO ENFOQUE</button>
+    <button v-if="sesion.zen" class="px-btn zen-salir no-print" @click="sesion.alternarZen">SALIR DEL MODO ENFOQUE</button>
 
     <main class="main-content">
       <slot></slot>
@@ -126,7 +126,7 @@
               :aria-checked="sesion.pagina[grupo.clave] === op.valor"
               class="opcion-pagina"
               :class="{ activa: sesion.pagina[grupo.clave] === op.valor }"
-              @click="configurarPagina({ [grupo.clave]: op.valor })"
+              @click="sesion.configurarPagina({ [grupo.clave]: op.valor })"
             >
               <strong>{{ op.etiqueta }}</strong>
               <small>{{ op.detalle }}</small>
@@ -157,22 +157,9 @@
 <script setup>
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import BarraFormato from '../components/BarraFormato.vue'
-import {
-  sesion,
-  TAMANOS_PAGINA,
-  MARGENES_PAGINA,
-  alternarTema,
-  alternarCrt,
-  alternarSonido,
-  alternarZen,
-  cambiarJugador,
-  configurarPagina,
-  dimensionesPagina,
-  crearDocumentoNuevo,
-  enlaceDocumento,
-  avisar
-} from '../stores/sesion'
+import { TAMANOS_PAGINA, MARGENES_PAGINA, useSesionStore } from '../stores/sesion'
 
+const sesion = useSesionStore()
 const menuActivo = ref(null)
 const modal = ref(null)
 
@@ -190,7 +177,7 @@ const atajos = [
   ['Esc', 'Cerrar menús o salir del enfoque']
 ]
 
-const enlace = computed(() => enlaceDocumento())
+const enlace = computed(() => sesion.enlaceDocumento())
 
 const jugadores = computed(() =>
   sesion.usuarios.length
@@ -237,7 +224,7 @@ const gruposPagina = computed(() => [
 const resumenPagina = computed(() => {
   const base = TAMANOS_PAGINA[sesion.pagina.tamano] || TAMANOS_PAGINA.carta
   const orientacion = sesion.pagina.orientacion === 'horizontal' ? 'horizontal' : 'vertical'
-  return `${base.etiqueta} ${orientacion}, ${dimensionesPagina()}`
+  return `${base.etiqueta} ${orientacion}, ${sesion.dimensionesPagina()}`
 })
 
 watch(
@@ -305,9 +292,9 @@ const cerrarMenu = () => {
 const copiarEnlace = async () => {
   try {
     await navigator.clipboard.writeText(enlace.value)
-    avisar('ENLACE COPIADO')
+    sesion.mostrarAviso('ENLACE COPIADO')
   } catch {
-    avisar('NO SE PUDO COPIAR')
+    sesion.mostrarAviso('NO SE PUDO COPIAR')
   }
 }
 
@@ -326,20 +313,20 @@ const ejecutarAccion = (accion) => {
   } else if (accion === 'pagina') {
     modal.value = 'pagina'
   } else if (accion === 'nuevo') {
-    crearDocumentoNuevo()
+    sesion.crearDocumentoNuevo()
   } else if (accion === 'jugador') {
-    cambiarJugador()
+    sesion.cambiarJugador()
   } else if (accion === 'zen') {
-    alternarZen()
+    sesion.alternarZen()
   } else if (accion === 'fullscreen') {
     if (!document.fullscreenElement) document.documentElement.requestFullscreen()
     else document.exitFullscreen()
   } else if (accion === 'tema') {
-    alternarTema()
+    sesion.alternarTema()
   } else if (accion === 'crt') {
-    alternarCrt()
+    sesion.alternarCrt()
   } else if (accion === 'sonido') {
-    alternarSonido()
+    sesion.alternarSonido()
   } else if (accion === 'atajos') {
     modal.value = 'atajos'
   }
@@ -348,13 +335,13 @@ const ejecutarAccion = (accion) => {
 const alTeclear = (e) => {
   if (e.key === 'Escape') {
     if (modal.value) modal.value = null
-    else if (sesion.zen) alternarZen()
+    else if (sesion.zen) sesion.alternarZen()
     else cerrarMenu()
     return
   }
   if ((e.ctrlKey || e.metaKey) && e.key === '.') {
     e.preventDefault()
-    alternarZen()
+    sesion.alternarZen()
   }
 }
 

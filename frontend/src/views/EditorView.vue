@@ -33,8 +33,8 @@
             :miColor="sesion.color"
             :soloLectura="!puedeEditar"
             :numero="numeros[index]"
-            :duenoNombre="nombreDe(bloque.bloqueadoPor)"
-            :duenoColor="colorDe(bloque.bloqueadoPor)"
+            :duenoNombre="sesion.nombreDe(bloque.bloqueadoPor)"
+            :duenoColor="sesion.colorDe(bloque.bloqueadoPor)"
             :indicador="indicadorDe(index)"
             :arrastrado="arrastrando === index"
             :hayArrastre="arrastrando !== null"
@@ -77,7 +77,7 @@
       <span v-if="!modoMovil" class="estado-item">PÁG {{ paginaActual }}/{{ paginas }}</span>
       <span class="estado-item solo-escritorio">{{ totalPalabras }} PAL</span>
       <span class="estado-item solo-escritorio">{{ totalCaracteres }} CAR</span>
-      <span v-if="puedeEditar" class="estado-item estado-guardado" :class="'estado-' + sesion.guardado">{{ textoGuardado }}</span>
+      <span v-if="puedeEditar" class="estado-item estado-guardado" :class="'estado-' + sesion.estadoGuardado">{{ textoGuardado }}</span>
       <span class="espaciador"></span>
       <button
         v-if="!modoMovil"
@@ -88,9 +88,9 @@
         {{ etiquetaPagina }}
       </button>
       <div v-if="!modoMovil" class="zoom-control">
-        <button class="mini-btn" title="Alejar" @click="cambiarZoom(-10)">−</button>
+        <button class="mini-btn" title="Alejar" @click="sesion.cambiarZoom(-10)">−</button>
         <span class="zoom-valor">{{ sesion.zoom }}%</span>
-        <button class="mini-btn" title="Acercar" @click="cambiarZoom(10)">+</button>
+        <button class="mini-btn" title="Acercar" @click="sesion.cambiarZoom(10)">+</button>
       </div>
     </footer>
   </div>
@@ -100,24 +100,16 @@
 import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue'
 import { io } from 'socket.io-client'
 import BlockUI from '../components/BlockUI.vue'
-import {
-  sesion,
-  COLORES,
-  TAMANOS_PAGINA,
-  ESPACIO_ENTRE_PAGINAS,
-  geometriaPagina,
-  cambiarZoom,
-  nombreDe,
-  colorDe,
-  avisar
-} from '../stores/sesion'
+import { COLORES, TAMANOS_PAGINA, ESPACIO_ENTRE_PAGINAS, useSesionStore } from '../stores/sesion'
 import { sonidos } from '../utils/sonidos'
 import { normalizarTipo, TIPOS_SIN_TEXTO } from '../utils/tipos'
 import { sanitizar } from '../utils/sanitizar'
 import { exportar, textoPlano } from '../utils/exportar'
 
+const sesion = useSesionStore()
+
 const URL_SERVIDOR =
-import.meta.env.VITE_BACKEND_URL || 'http://localhost:3000'
+  import.meta.env.VITE_URL_SERVIDOR || 'https://grim-cauldron-974wjj7g6469cx9rj-3000.app.github.dev'
 const LIMITE_HISTORIAL = 60
 const ESPERA_REINTENTO = 3000
 const ANCHO_MOVIL = 700
@@ -169,7 +161,7 @@ const bloques = ref([])
 const puedeEditar = computed(() => conectado.value && sesion.sincronizado)
 
 const modoMovil = computed(() => anchoVentana.value < ANCHO_MOVIL)
-const geo = computed(() => geometriaPagina())
+const geo = computed(() => sesion.geometriaPagina())
 const paso = computed(() => geo.value.alto + ESPACIO_ENTRE_PAGINAS)
 const alturaHoja = computed(() => paginas.value * paso.value - ESPACIO_ENTRE_PAGINAS)
 
@@ -207,7 +199,7 @@ const etiquetaPagina = computed(() => {
 const nombresConectados = computed(() => sesion.usuarios.map((u) => u.nombre).join(', ') || 'Nadie más conectado')
 
 const textoGuardado = computed(
-  () => ({ guardado: 'GUARDADO', guardando: 'GUARDANDO...', error: 'ERROR AL GUARDAR' })[sesion.guardado] || 'GUARDADO'
+  () => ({ guardado: 'GUARDADO', guardando: 'GUARDANDO...', error: 'ERROR AL GUARDAR' })[sesion.estadoGuardado] || 'GUARDADO'
 )
 
 const emitirVentana = (nombre) => window.dispatchEvent(new CustomEvent(nombre))
@@ -807,13 +799,13 @@ const recibirPresencia = (lista) => {
   if (previos.size > 0) {
     limpia.forEach((u) => {
       if (!previos.has(String(u.id)) && String(u.id) !== String(sesion.miId)) {
-        avisar(`${u.nombre.toUpperCase()} SE UNIÓ`)
+        sesion.mostrarAviso(`${u.nombre.toUpperCase()} SE UNIÓ`)
         sonidos.entrar()
       }
     })
     sesion.usuarios.forEach((u) => {
       if (!nuevos.has(String(u.id))) {
-        avisar(`${u.nombre.toUpperCase()} SALIÓ`)
+        sesion.mostrarAviso(`${u.nombre.toUpperCase()} SALIÓ`)
         sonidos.salir()
       }
     })
@@ -825,7 +817,7 @@ const recibirPresencia = (lista) => {
 const alExportar = async (e) => {
   const formato = e.detail && e.detail.formato
   if (!formato) return
-  avisar('PREPARANDO ARCHIVO...')
+  sesion.mostrarAviso('PREPARANDO ARCHIVO...')
   try {
     await exportar(formato, {
       titulo: sesion.titulo,
@@ -833,10 +825,10 @@ const alExportar = async (e) => {
       pagina: { ...sesion.pagina },
       bloques: instantanea()
     })
-    avisar('ARCHIVO DESCARGADO')
+    sesion.mostrarAviso('ARCHIVO DESCARGADO')
     sonidos.agregar()
   } catch (error) {
-    avisar('NO SE PUDO EXPORTAR')
+    sesion.mostrarAviso('NO SE PUDO EXPORTAR')
     sonidos.error()
   }
 }
@@ -871,7 +863,7 @@ const alRecibirEstadoInicial = (estado) => {
 
   historial.length = 0
   rehacerPila.length = 0
-  sesion.guardado = 'guardado'
+  sesion.estadoGuardado = 'guardado'
   sesion.sincronizado = true
 
   if (tituloPendiente !== null) {
@@ -932,7 +924,7 @@ onMounted(() => {
   })
 
   socket.on('error_servidor', () => {
-    avisar('NO SE PUDO CARGAR EL DOCUMENTO')
+    sesion.mostrarAviso('NO SE PUDO CARGAR EL DOCUMENTO')
     clearTimeout(reintentoUnirse)
     reintentoUnirse = setTimeout(unirse, ESPERA_REINTENTO)
   })
@@ -942,7 +934,7 @@ onMounted(() => {
   socket.on('presencia', recibirPresencia)
 
   socket.on('estado_guardado', (estado) => {
-    if (['guardado', 'guardando', 'error'].includes(estado)) sesion.guardado = estado
+    if (['guardado', 'guardando', 'error'].includes(estado)) sesion.estadoGuardado = estado
   })
 
   socket.on('titulo_actualizado', (nuevoTitulo) => {
@@ -998,7 +990,7 @@ onUnmounted(() => {
   estiloImpresion = null
   sesion.activo = null
   sesion.sincronizado = false
-  sesion.guardado = 'guardado'
+  sesion.estadoGuardado = 'guardado'
   window.removeEventListener('resize', alRedimensionar)
   window.removeEventListener('scroll', alDesplazar)
   window.removeEventListener('keydown', alTeclaGlobal)

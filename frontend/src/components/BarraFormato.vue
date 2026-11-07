@@ -123,10 +123,12 @@
 
 <script setup>
 import { ref, reactive, computed, onMounted, onUnmounted } from 'vue'
-import { sesion } from '../stores/sesion'
+import { useSesionStore } from '../stores/sesion'
 import { TIPOS, etiquetaDeTipo } from '../utils/tipos'
 import { FUENTES, nombreFuente } from '../utils/sanitizar'
 import { sonidos } from '../utils/sonidos'
+
+const sesion = useSesionStore()
 
 const TAMANOS = [10, 11, 12, 13, 14, 16, 18, 20, 24, 28, 32, 40, 48]
 const COLORES_TEXTO = ['#1B1740', '#2B2563', '#6F6BD9', '#B9A9E8', '#D63D5B', '#E8903A', '#1FA45B', '#2E86DE', '#E8A9D6', '#FFFFFF']
