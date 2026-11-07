@@ -154,7 +154,7 @@
   </div>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import BarraFormato from '../components/BarraFormato.vue'
 import { TAMANOS_PAGINA, MARGENES_PAGINA, useSesionStore } from '../stores/sesion'

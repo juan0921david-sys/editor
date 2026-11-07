@@ -109,7 +109,7 @@
   </div>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { ref, computed, watch, onMounted } from 'vue'
 import { TIPOS_CON_ENTER_BLOQUE, TIPOS_SIN_TEXTO, filtrarTipos } from '../utils/tipos'
 
