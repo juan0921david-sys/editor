@@ -1,22 +1,18 @@
 <template>
-  <div class="retro-bg no-print">
-    <div class="retro-grid"></div>
-    <div class="blob indigo-blob"></div>
-    <div class="blob lavender-blob"></div>
-  </div>
-  <div class="crt-overlay no-print"></div>
-  <PantallaInicio v-if="!sesion.listo" />
-  <MainLayout v-else>
-    <router-view />
+  <MainLayout v-if="sesion.listo && sesion.documentoId">
+    <EditorView />
   </MainLayout>
+  <PantallaInicio v-else />
 </template>
 
 <script setup>
+import { useSesionStore } from './stores/sesion'
 import MainLayout from './layouts/MainLayout.vue'
+import EditorView from './views/EditorView.vue'
 import PantallaInicio from './components/PantallaInicio.vue'
-import { sesion } from './stores/sesion'
-</script>
 
+const sesion = useSesionStore()
+</script>
 <style>
 @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:ital,wght@0,400;0,500;0,600;0,700;1,400;1,600&family=Press+Start+2P&family=VT323&display=swap');
 

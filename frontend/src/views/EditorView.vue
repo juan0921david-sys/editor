@@ -109,7 +109,7 @@ import { exportar, textoPlano } from '../utils/exportar'
 const sesion = useSesionStore()
 
 const URL_SERVIDOR =
-  import.meta.env.VITE_URL_SERVIDOR || 'https://grim-cauldron-974wjj7g6469cx9rj-3000.app.github.dev'
+import.meta.env.VITE_BACKEND_URL || 'http://localhost:3000'
 const LIMITE_HISTORIAL = 60
 const ESPERA_REINTENTO = 3000
 const ANCHO_MOVIL = 700

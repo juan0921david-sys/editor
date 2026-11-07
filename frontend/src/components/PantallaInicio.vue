@@ -49,8 +49,10 @@
 
 <script setup>
 import { ref, computed, nextTick, onMounted, onUnmounted } from 'vue'
-import { sesion, COLORES, iniciarSesion } from '../stores/sesion'
+import { useSesionStore, COLORES } from '../stores/sesion'
 import { sonidos } from '../utils/sonidos'
+
+const sesion = useSesionStore()
 
 const paso = ref('titulo')
 const nombre = ref(sesion.nombre)
@@ -78,8 +80,8 @@ const comenzar = () => {
     sonidos.error()
     return
   }
-  sonidos.inicio()
-  iniciarSesion(nombre.value, color.value)
+  sonidos.agregar()
+  sesion.iniciarSesion(nombre.value, color.value)
 }
 
 const alTeclear = (e) => {

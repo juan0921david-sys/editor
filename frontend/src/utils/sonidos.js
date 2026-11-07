@@ -1,4 +1,4 @@
-import { sesion } from '../stores/sesion'
+import { useSesionStore } from '../stores/sesion'
 
 let contexto = null
 
@@ -31,6 +31,7 @@ const tono = (frecuencia, duracion, opciones = {}) => {
 }
 
 const reproducir = (secuencia) => () => {
+  const sesion = useSesionStore()
   if (sesion.sonido) secuencia()
 }
 
