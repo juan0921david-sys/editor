@@ -46,6 +46,8 @@ export const useSesionStore = defineStore('sesion', () => {
   const uid = ref<string>(leer('editor-uid', '') || generarId(6))
   escribir('editor-uid', uid.value)
 
+  const accessToken = ref<string>('')
+
   const leerJugador = (): { nombre: string; color: string } | null => {
     try {
       const dato = JSON.parse(leer('editor-jugador', 'null'))
@@ -109,9 +111,24 @@ export const useSesionStore = defineStore('sesion', () => {
     }, 2400)
   }
 
-  const iniciarSesion = (n: string, c: string): void => {
+  const iniciarSesion = async (n: string, c: string): Promise<void> => {
     nombre.value = n.trim().slice(0, 16)
     color.value = COLORES.includes(c) ? c : COLORES[0]
+    try {
+      const apiHost = import.meta.env.VITE_API_URL || import.meta.env.VITE_URL_SERVIDOR || 'http://localhost:3000'
+      const respuesta = await fetch(`${apiHost}/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ nombre: nombre.value, uid: uid.value }),
+        credentials: 'include'
+      })
+      if (respuesta.ok) {
+        const datos = await respuesta.json()
+        accessToken.value = datos.accessToken || ''
+      }
+    } catch {
+      // Modo de sesion local resiliente
+    }
     escribir('editor-jugador', JSON.stringify({ nombre: nombre.value, color: color.value }))
     listo.value = true
   }
@@ -124,6 +141,7 @@ export const useSesionStore = defineStore('sesion', () => {
     activo.value = null
     sincronizado.value = false
     estadoGuardado.value = 'guardado'
+    accessToken.value = ''
   }
 
   const configurarPagina = (cambios: Partial<PaginaConfig>): void => {
@@ -197,6 +215,7 @@ export const useSesionStore = defineStore('sesion', () => {
 
   return {
     uid,
+    accessToken,
     listo,
     nombre,
     color,

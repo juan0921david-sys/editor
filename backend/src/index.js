@@ -1,3 +1,8 @@
+import cookieParser from 'cookie-parser'
+import authRouter from './routes/authRoutes.js'
+
+
+
 const express = require('express')
 const http = require('http')
 const { Server } = require('socket.io')
@@ -28,6 +33,8 @@ const salas = new Map()
 const app = express()
 app.use(cors())
 app.use(express.json())
+app.use(cookieParser())
+app.use('/auth', authRoutes)
 
 app.get('/', (req, res) => {
   res.send('Backend del Editor Colaborativo activo')
