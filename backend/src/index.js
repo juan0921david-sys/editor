@@ -10,7 +10,10 @@ const pool = require('./config/db')
 const documentService = require('./services/documentService')
 const documentRoutes = require('./routes/document.routes')
 const authRoutes = require('./routes/authRoutes')
-const { errorHandler, notFoundHandler } = require('./middlewares/errorMiddleware')
+const { correlationMiddleware,
+       errorHandler,
+       notFoundHandler
+      } = require('./middlewares/errorMiddleware')
 
 const PORT = process.env.PORT || 3000
 const ESPERA_GUARDADO = 700
@@ -26,6 +29,7 @@ const COLORES = ['#B9A9E8', '#8B7BE0', '#6F6BD9', '#E8A9D6', '#7FE0C3', '#F2C66D
 const salas = new Map()
 
 const app = express()
+app.use(correlationMiddleware)
 app.use(cors())
 app.use(express.json())
 app.use(cookieParser())
