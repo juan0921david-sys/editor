@@ -1,10 +1,9 @@
-import { Router } from 'express'
-import { loginSeguro, refrescarToken } from '../controllers/authControllers.js'
 
-const router = Router()
+const express = require('express')
+const router = express.Router()
+const { loginSeguro, refrescarToken } = require('../controllers/authController')
 
 router.post('/login', loginSeguro)
 router.post('/refresh', refrescarToken)
 
-
-export default router
+module.exports = router

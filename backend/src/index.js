@@ -1,21 +1,16 @@
-import cookieParser from 'cookie-parser'
-import authRouter from './routes/authRoutes.js'
-
-
 
 const express = require('express')
 const http = require('http')
 const { Server } = require('socket.io')
 const cors = require('cors')
+const cookieParser = require('cookie-parser')
 require('dotenv').config()
 
 const pool = require('./config/db')
-const {
-  asegurarTabla,
-  obtenerDocumento,
-  actualizarTituloBD,
-  actualizarEstructuraBD
-} = require('./models/document.model')
+const documentService = require('./services/documentService')
+const documentRoutes = require('./routes/document.routes')
+const authRoutes = require('./routes/authRoutes')
+const { errorHandler, notFoundHandler } = require('./middlewares/errorMiddleware')
 
 const PORT = process.env.PORT || 3000
 const ESPERA_GUARDADO = 700
@@ -35,6 +30,7 @@ app.use(cors())
 app.use(express.json())
 app.use(cookieParser())
 app.use('/auth', authRoutes)
+app.use('/api/documentos', documentRoutes)
 
 app.get('/', (req, res) => {
   res.send('Backend del Editor Colaborativo activo')
@@ -94,7 +90,7 @@ const emitirEstadoGuardado = (sala, estado) => {
 }
 
 const cargarSala = async (sala) => {
-  const doc = await obtenerDocumento(sala.id)
+  const doc = await documentService.cargarDocumento(sala.id)
   sala.titulo = typeof doc.titulo === 'string' ? doc.titulo : TITULO_POR_DEFECTO
   const bloques = typeof doc.bloques === 'string' ? JSON.parse(doc.bloques) : doc.bloques
   sala.bloques = limpiarBloques(bloques) || []
@@ -146,8 +142,8 @@ const guardar = async (sala) => {
     sala.tituloSucio = false
     sala.bloquesSucios = false
     try {
-      if (guardarTitulo) await actualizarTituloBD(sala.id, titulo)
-      if (guardarBloques) await actualizarEstructuraBD(sala.id, bloques)
+      if (guardarTitulo) await documentService.guardarTitulo(sala.id, titulo)
+      if (guardarBloques) await documentService.guardarEstructura(sala.id, bloques)
     } catch (error) {
       console.error(`[guardado] fallo en el documento ${sala.id}:`, error)
       sala.tituloSucio = sala.tituloSucio || guardarTitulo
@@ -386,6 +382,9 @@ setInterval(() => {
   }
 }, REVISION_SALAS)
 
+app.use(notFoundHandler)
+app.use(errorHandler)
+
 const apagar = async () => {
   const tareas = []
   for (const sala of salas.values()) {
@@ -405,7 +404,7 @@ process.on('SIGTERM', apagar)
 const iniciar = async () => {
   try {
     await pool.query('SELECT NOW()')
-    await asegurarTabla()
+    await documentService.inicializarBaseDeDatos()
   } catch (error) {
     console.error('No se pudo iniciar el backend. Revisa DATABASE_URL y que PostgreSQL esté activo:', error)
     process.exit(1)
