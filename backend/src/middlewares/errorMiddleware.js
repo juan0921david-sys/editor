@@ -1,9 +1,37 @@
+const { randomUUID } = require('node:crypto')
+
+const correlationMiddleware = (req, res, next) => {
+  const correlationId = randomUUID()
+
+  req.correlationId = correlationId
+  res.setHeader('x-correlation-id', correlationId)
+
+  next()
+}
 
 const errorHandler = (err, req, res, next) => {
-  console.error('[Error Servidor]:', err.stack || err.message)
+  const status = 
+    Number.isInteger(err.status) && err.status >= 400 && err.status <= 599 
+    ? err.status
+    : 500
+  console.error(JSON.stringify({
+    level: 'error', 
+    message: 'Error procesando peticion HTTP', 
+    correlationId: req.correlationId || null, 
+    method: req.method, 
+    path: req.path, 
+    status, 
+    errorName: typeof err.name === 'string' ? err.name : 'Error', 
+    timestamp: new Date().toISOString()
+  }))
 
-  const status = err.status || 500
-  const message = err.message || 'Error interno del servidor'
+  const message =
+    status >=500
+  ? 'Error interno del servidor'
+    : typeof err.message === 'string'
+  ? err.message
+    : 'error en la solicitud'
+
 
   res.status(status).json({
     ok: false,
@@ -20,6 +48,7 @@ const notFoundHandler = (req, res) => {
 }
 
 module.exports = {
+  correlationMiddleware, 
   errorHandler,
   notFoundHandler
 }
