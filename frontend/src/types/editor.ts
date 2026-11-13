@@ -1,4 +1,4 @@
-export type TipoBloque = 'parrafo' | 'titulo1' | 'titulo2' | 'titulo3' | 'lista' | 'numerada' | 'tarea' | 'cita' | 'codigo' | 'divisor' | 'salto'
+export type TipoBloque = 'parrafo' | 'h1' | 'h2' | 'h3' | 'lista' | 'numerada' | 'tarea' | 'cita' | 'codigo' | 'divisor' | 'salto'
 
 export interface Bloque {
   id: string
