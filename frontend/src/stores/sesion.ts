@@ -74,8 +74,7 @@ export const useSesionStore = defineStore('sesion', () => {
   const guardadoDatos = leerJugador()
   const prefiereOscuro = !!(window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches)
 
-  const listo = ref<boolean>(false)
-  const nombre = ref<string>(guardadoDatos ? guardadoDatos.nombre : '')
+  const listo = ref<boolean>(!!guardadoDatos && guardadoDatos.nombre.trim().length >= 2)  const nombre = ref<string>(guardadoDatos ? guardadoDatos.nombre : '')
   const color = ref<string>(guardadoDatos && COLORES.includes(guardadoDatos.color) ? guardadoDatos.color : COLORES[0])
   const miId = ref<string>('')
   const usuarios = ref<Usuario[]>([])
