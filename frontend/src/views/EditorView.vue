@@ -96,7 +96,7 @@
   </div>
 </template>
 
-<script setup lang="ts">
+<script setup>
 import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue'
 import { io } from 'socket.io-client'
 import BlockUI from '../components/BlockUI.vue'

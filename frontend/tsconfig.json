@@ -1,4 +1,3 @@
-
 {
   "compilerOptions": {
     "target": "esnext",
@@ -6,6 +5,10 @@
     "module": "esnext",
     "moduleResolution": "bundler",
     "strict": true,
+"allowJs": true,
+"checkJs": false,
+"noEmit": true,
+"types": ["vite/client"],
     "jsx": "preserve",
     "sourceMap": true,
     "resolveJsonModule": true,

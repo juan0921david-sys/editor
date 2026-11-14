@@ -121,7 +121,7 @@
   </Teleport>
 </template>
 
-<script setup lang="ts">
+<script setup>
 import { ref, reactive, computed, onMounted, onUnmounted } from 'vue'
 import { useSesionStore } from '../stores/sesion'
 import { TIPOS, etiquetaDeTipo } from '../utils/tipos'
