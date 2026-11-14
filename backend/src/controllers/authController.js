@@ -1,17 +1,27 @@
 
 const jwt = require('jsonwebtoken')
 
+const { loginSchema } = require('../validators/authSchemas')
 const ACCESS_SECRET = process.env.JWT_ACCESS_SECRET || 'access_secret_key_seguro_grado'
 const REFRESH_SECRET = process.env.JWT_REFRESH_SECRET || 'refresh_secret_key_seguro_grado'
 
 const loginSeguro = (req, res) => {
   try {
-    const { nombre, uid } = req.body
-    if (!nombre) {
-      return res.status(400).json({ error: 'El nombre es obligatorio' })
-    }
+   const resultado = loginSchema.safeParse(req.body)
 
-    const payload = { uid: uid || 'usr_' + Date.now(), nombre: nombre.trim() }
+if (!resultado.success) {
+  return res.status(400).json({
+    error: 'Los datos de inicio de sesión no son válidos'
+  })
+}
+
+const { nombre, uid } = resultado.data
+
+const payload = {
+  uid: uid || 'usr_' + Date.now(),
+  nombre
+}
+
 
     const accessToken = jwt.sign(payload, ACCESS_SECRET, { expiresIn: '15m' })
 
