@@ -10,16 +10,44 @@
       </template>
 
       <form v-else class="jugador" @submit.prevent="comenzar">
-        <label class="etiqueta" for="nombre-jugador">NOMBRE</label>
+        <p class="etiqueta">{{ modo === 'login' ? 'INGRESO' : 'NUEVA CUENTA' }}</p>
+
+        <template v-if="modo === 'registro'">
+          <label class="etiqueta" for="nombre-jugador">NOMBRE</label>
+          <input
+            id="nombre-jugador"
+            v-model="nombre"
+            class="campo"
+            maxlength="40"
+            autocomplete="name"
+            placeholder="TU NOMBRE"
+          />
+        </template>
+
+        <label class="etiqueta" for="correo-jugador">CORREO</label>
         <input
-          id="nombre-jugador"
+          id="correo-jugador"
           ref="entrada"
-          v-model="nombre"
+          v-model="correo"
           class="campo"
-          maxlength="16"
-          autocomplete="off"
-          placeholder="TU NOMBRE"
+          type="email"
+          maxlength="120"
+          autocomplete="email"
+          placeholder="TU CORREO"
         />
+
+        <label class="etiqueta" for="password-jugador">CONTRASEÑA</label>
+        <input
+          id="password-jugador"
+          v-model="password"
+          class="campo"
+          type="password"
+          minlength="8"
+          maxlength="128"
+          autocomplete="current-password"
+          placeholder="MÍNIMO 8 CARACTERES"
+        />
+
         <span class="etiqueta">COLOR</span>
         <div class="colores" role="radiogroup" aria-label="Color de jugador">
           <button
@@ -34,14 +62,28 @@
             @click="elegirColor(c)"
           ></button>
         </div>
+
+        <p v-if="error" class="error">{{ error }}</p>
+
         <div class="vista-previa">
           <div class="avatar" :style="{ background: color }">{{ inicial }}</div>
           <div class="datos">
-            <strong>{{ nombre.trim() || 'JUGADOR' }}</strong>
-            <small>ID ÚNICA: #{{ sesion.uid }}</small>
+            <strong>{{ (modo === 'registro' ? nombre : correo).trim() || 'JUGADOR' }}</strong>
+            <small v-if="sesion.autenticado">ID: #{{ sesion.uid }}</small>
+            <small v-else>IDENTIDAD: {{ modo === 'login' ? 'INGRESO' : 'REGISTRO' }}</small>
           </div>
         </div>
-        <button type="submit" class="px-btn primary entrar" :disabled="!valido">▶ START</button>
+
+        <button
+          type="submit"
+          class="px-btn primary entrar"
+          :disabled="!valido || cargando"
+        >
+          {{ cargando ? 'ESPERANDO...' : modo === 'login' ? '▶ INGRESAR' : '▶ CREAR CUENTA' }}
+        </button>
+        <button type="button" class="px-btn cambio" @click="cambiarModo">
+          {{ modo === 'login' ? 'CREAR CUENTA' : 'YA TENGO CUENTA' }}
+        </button>
       </form>
     </div>
   </div>
@@ -49,18 +91,36 @@
 
 <script setup lang="ts">
 import { ref, computed, nextTick, onMounted, onUnmounted } from 'vue'
+import { useRouter } from 'vue-router'
 import { useSesionStore, COLORES } from '../stores/sesion'
 import { sonidos } from '../utils/sonidos'
+import { mensajeDeError } from '../utils/validacion'
+
+type Modo = 'login' | 'registro'
 
 const sesion = useSesionStore()
+const router = useRouter()
 
 const paso = ref('titulo')
+const modo = ref<Modo>('login')
 const nombre = ref(sesion.nombre)
+const correo = ref('')
+const password = ref('')
 const color = ref(sesion.color)
+const error = ref('')
+const cargando = ref(false)
 const entrada = ref<HTMLInputElement | null>(null)
 
-const valido = computed(() => nombre.value.trim().length >= 2)
-const inicial = computed(() => (nombre.value.trim()[0] || '?').toUpperCase())
+const valido = computed<boolean>(() => {
+  if (modo.value === 'registro' && nombre.value.trim().length < 2) return false
+  return correo.value.trim().length > 3 && password.value.length >= 8
+})
+
+const inicial = computed<string>(() => {
+  const texto =
+    modo.value === 'registro' ? nombre.value.trim() : correo.value.trim()
+  return (texto[0] || '?').toUpperCase()
+})
 
 const avanzar = async () => {
   if (paso.value !== 'titulo') return
@@ -75,13 +135,45 @@ const elegirColor = (c: string) => {
   sonidos.clic()
 }
 
-const comenzar = () => {
+const cambiarModo = () => {
+  modo.value = modo.value === 'login' ? 'registro' : 'login'
+  error.value = ''
+  sonidos.clic()
+}
+
+const comenzar = async () => {
   if (!valido.value) {
     sonidos.error()
     return
   }
-  sonidos.agregar()
-  sesion.iniciarSesion(nombre.value, color.value)
+
+  cargando.value = true
+  error.value = ''
+
+  try {
+    if (modo.value === 'login') {
+      await sesion.iniciarSesion(
+        correo.value.trim(),
+        password.value,
+        color.value
+      )
+    } else {
+      await sesion.registrar(
+        nombre.value.trim(),
+        correo.value.trim(),
+        password.value,
+        color.value
+      )
+    }
+    sonidos.agregar()
+    await router.push({ name: 'editor' })
+  } catch (e) {
+    error.value = mensajeDeError(e)
+    password.value = ''
+    sonidos.error()
+  } finally {
+    cargando.value = false
+  }
 }
 
 const alTeclear = (e: KeyboardEvent) => {

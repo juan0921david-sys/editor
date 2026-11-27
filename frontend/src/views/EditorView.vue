@@ -100,6 +100,7 @@
 import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue'
 import { io } from 'socket.io-client'
 import type { Socket } from 'socket.io-client'
+import { useRouter } from 'vue-router'
 import type {
   Bloque, BloquePersistido, TipoBloque, Usuario, EstadoInicial,
   EventosServidor, EventosCliente, CambioContenido, CambioTipo,
@@ -113,9 +114,12 @@ import { sanitizar } from '../utils/sanitizar'
 import { exportar, textoPlano } from '../utils/exportar'
 
 const sesion = useSesionStore()
+const router = useRouter()
 
 const URL_SERVIDOR =
-import.meta.env.VITE_BACKEND_URL || 'http://localhost:3000'
+  import.meta.env.VITE_API_URL ||
+  import.meta.env.VITE_BACKEND_URL ||
+  'http://localhost:3000'
 const LIMITE_HISTORIAL = 60
 const ESPERA_REINTENTO = 3000
 const ANCHO_MOVIL = 700
@@ -849,8 +853,6 @@ const unirse = () => {
   if (!socket || !socket.connected) return
   socket.emit('unirse', {
     documentoId: String(sesion.documentoId),
-    uid: sesion.uid,
-    nombre: sesion.nombre,
     color: sesion.color
   })
 }
@@ -912,7 +914,10 @@ onMounted(() => {
   window.addEventListener('resize', alRedimensionar)
   window.addEventListener('scroll', alDesplazar, { passive: true })
 
-  socket = io(URL_SERVIDOR)
+  socket = io(URL_SERVIDOR, {
+    auth: { token: sesion.accessToken },
+    transports: ['websocket', 'polling']
+  })
 
   socket.on('connect', () => {
     conectado.value = true
@@ -930,9 +935,28 @@ onMounted(() => {
     clearTimeout(reintentoUnirse)
   })
 
-  socket.on('connect_error', () => {
+  socket.on('connect_error', async (error: Error) => {
     conectado.value = false
     sesion.sincronizado = false
+
+    const mensaje = error.message
+    const necesitaToken =
+      mensaje === 'no_autorizado' ||
+      mensaje === 'token_invalido' ||
+      mensaje === 'sesion_revocada'
+
+    if (!necesitaToken) return
+
+    const token = await sesion.renovarToken()
+
+    if (token && socket) {
+      socket.auth = { token }
+      socket.connect()
+      return
+    }
+
+    sesion.cerrarSesionLocal()
+    await router.push({ name: 'ingresar' })
   })
 
   socket.on('error_servidor', () => {

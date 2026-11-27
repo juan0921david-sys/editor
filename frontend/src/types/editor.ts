@@ -53,7 +53,7 @@ export interface EventosServidor {
 }
 
 export interface EventosCliente {
-  unirse: (datos: { documentoId: string; uid: string; nombre: string; color: string }) => void
+  unirse: (datos: { documentoId: string; color: string }) => void
   cambiar_titulo: (titulo: string) => void
   solicitar_bloqueo: (id: string) => void
   liberar_bloqueo: (id: string) => void
@@ -64,3 +64,14 @@ export interface EventosCliente {
   ) => void
 }
 
+export interface UsuarioAuth {
+  id: string
+  nombre: string
+  correo: string
+  rol: 'editor' | 'admin'
+}
+
+export interface RespuestaAuth {
+  accessToken: string
+  usuario: UsuarioAuth
+}

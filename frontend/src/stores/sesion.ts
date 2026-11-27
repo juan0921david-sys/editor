@@ -1,7 +1,12 @@
 import { defineStore } from 'pinia'
-import { ref, watch } from 'vue'
-import type { Usuario, PaginaConfig } from '../types/editor'
-import { esRegistro, leerAccessToken } from '../utils/validacion'
+import { computed, ref, watch } from 'vue'
+import type {
+  Usuario,
+  PaginaConfig,
+  UsuarioAuth
+} from '../types/editor'
+import * as authApi from '../services/authApi'
+import { esRegistro } from '../utils/validacion'
 
 export const COLORES: string[] = ['#B9A9E8', '#8B7BE0', '#6F6BD9', '#E8A9D6', '#7FE0C3', '#F2C66D']
 
@@ -44,10 +49,12 @@ export const generarId = (largo: number = 6): string => {
 }
 
 export const useSesionStore = defineStore('sesion', () => {
-  const uid = ref<string>(leer('editor-uid', '') || generarId(6))
-  escribir('editor-uid', uid.value)
-
+  const uid = ref<string>('')
   const accessToken = ref<string>('')
+  const usuario = ref<UsuarioAuth | null>(null)
+  const autenticado = computed<boolean>(
+    () => !!accessToken.value && !!usuario.value
+  )
 
   const leerJugador = (): { nombre: string; color: string } | null => {
     try {
@@ -76,7 +83,7 @@ export const useSesionStore = defineStore('sesion', () => {
   const guardadoDatos = leerJugador()
   const prefiereOscuro = !!(window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches)
 
-  const listo = ref<boolean>(!!guardadoDatos && guardadoDatos.nombre.trim().length >= 2)
+  const listo = ref<boolean>(false)
   const nombre = ref<string>(guardadoDatos ? guardadoDatos.nombre : '')
   const color = ref<string>(guardadoDatos && COLORES.includes(guardadoDatos.color) ? guardadoDatos.color : COLORES[0])
   const miId = ref<string>('')
@@ -113,29 +120,28 @@ export const useSesionStore = defineStore('sesion', () => {
     }, 2400)
   }
 
-  const iniciarSesion = async (n: string, c: string): Promise<void> => {
-    nombre.value = n.trim().slice(0, 16)
-    color.value = COLORES.includes(c) ? c : COLORES[0]
-    try {
-      const apiHost = import.meta.env.VITE_API_URL || import.meta.env.VITE_URL_SERVIDOR || 'http://localhost:3000'
-      const respuesta = await fetch(`${apiHost}/auth/login`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ nombre: nombre.value, uid: uid.value }),
-        credentials: 'include'
-      })
-      if (respuesta.ok) {
-        const datos: unknown = await respuesta.json()
-        accessToken.value = leerAccessToken(datos)
-      }
-    } catch {
-      // Modo de sesion local resiliente
+  const aplicarSesion = (
+    respuesta: { accessToken: string; usuario: UsuarioAuth },
+    colorElegido?: string
+  ): void => {
+    accessToken.value = respuesta.accessToken
+    usuario.value = respuesta.usuario
+    uid.value = respuesta.usuario.id
+    nombre.value = respuesta.usuario.nombre.slice(0, 16)
+    if (colorElegido && COLORES.includes(colorElegido)) {
+      color.value = colorElegido
     }
-    escribir('editor-jugador', JSON.stringify({ nombre: nombre.value, color: color.value }))
+    escribir(
+      'editor-jugador',
+      JSON.stringify({ nombre: nombre.value, color: color.value })
+    )
     listo.value = true
   }
 
-  const cambiarJugador = (): void => {
+  const cerrarSesionLocal = (): void => {
+    accessToken.value = ''
+    usuario.value = null
+    uid.value = ''
     listo.value = false
     zen.value = false
     usuarios.value = []
@@ -143,7 +149,58 @@ export const useSesionStore = defineStore('sesion', () => {
     activo.value = null
     sincronizado.value = false
     estadoGuardado.value = 'guardado'
-    accessToken.value = ''
+  }
+
+  const iniciarSesion = async (
+    correo: string,
+    password: string,
+    colorElegido?: string
+  ): Promise<void> => {
+    const respuesta = await authApi.login(correo, password)
+    aplicarSesion(respuesta, colorElegido)
+  }
+
+  const registrar = async (
+    nombreCompleto: string,
+    correo: string,
+    password: string,
+    colorElegido?: string
+  ): Promise<void> => {
+    await authApi.registro(nombreCompleto, correo, password)
+    await iniciarSesion(correo, password, colorElegido)
+  }
+
+  const renovarToken = async (): Promise<string | null> => {
+    try {
+      const respuesta = await authApi.refrescar()
+      aplicarSesion(respuesta)
+      return respuesta.accessToken
+    } catch {
+      cerrarSesionLocal()
+      return null
+    }
+  }
+
+  const restaurarSesion = async (): Promise<void> => {
+    try {
+      const respuesta = await authApi.refrescar()
+      aplicarSesion(respuesta)
+    } catch {
+      cerrarSesionLocal()
+    }
+  }
+
+  const cerrarSesion = async (): Promise<void> => {
+    try {
+      await authApi.logout()
+    } catch {
+      // La sesión local se cierra aunque falle la petición.
+    }
+    cerrarSesionLocal()
+  }
+
+  const cambiarJugador = (): void => {
+    cerrarSesionLocal()
   }
 
   const configurarPagina = (cambios: Partial<PaginaConfig>): void => {
@@ -218,6 +275,8 @@ export const useSesionStore = defineStore('sesion', () => {
   return {
     uid,
     accessToken,
+    usuario,
+    autenticado,
     listo,
     nombre,
     color,
@@ -237,6 +296,11 @@ export const useSesionStore = defineStore('sesion', () => {
     aviso,
     mostrarAviso,
     iniciarSesion,
+    registrar,
+    renovarToken,
+    restaurarSesion,
+    cerrarSesion,
+    cerrarSesionLocal,
     cambiarJugador,
     configurarPagina,
     geometriaPagina,

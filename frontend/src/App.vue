@@ -1,17 +1,22 @@
 <template>
-  <MainLayout v-if="sesion.listo && sesion.documentoId">
-    <EditorView />
+  <MainLayout v-if="conLayout">
+    <RouterView />
   </MainLayout>
-  <PantallaInicio v-else />
+  <RouterView v-else />
 </template>
 
 <script setup lang="ts">
+import { computed } from 'vue'
+import { useRoute } from 'vue-router'
 import { useSesionStore } from './stores/sesion'
 import MainLayout from './layouts/MainLayout.vue'
-import EditorView from './views/EditorView.vue'
-import PantallaInicio from './components/PantallaInicio.vue'
 
+const route = useRoute()
 const sesion = useSesionStore()
+
+const conLayout = computed<boolean>(
+  () => sesion.autenticado && sesion.listo && route.meta.requiresAuth === true
+)
 </script>
 <style>
 @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:ital,wght@0,400;0,500;0,600;0,700;1,400;1,600&family=Press+Start+2P&family=VT323&display=swap');
