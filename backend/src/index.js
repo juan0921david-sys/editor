@@ -4,17 +4,24 @@ const http = require('http')
 const { Server } = require('socket.io')
 const cors = require('cors')
 const cookieParser = require('cookie-parser')
+const crypto = require('crypto')
+const { crearOpcionesCors, crearLimitador } = require('./middlewares/httpSecurity')
 require('dotenv').config()
 
 const pool = require('./config/db')
 const documentService = require('./services/documentService')
 const { adquirirBloqueo } = require('./services/blockLockService')
 const documentRoutes = require('./routes/document.routes')
-const authRoutes = require('./routes/authRoutes')
+const { crearRepositorioUsuarios } = require('./repositories/usuarioRepository')
+const { crearAlmacenSesiones } = require('./services/sesionService')
+const { crearAuthService } = require('./services/authService')
+const { crearAuthController } = require('./controllers/authController')
+const { crearAuthRoutes } = require('./routes/authRoutes')
+const { crearAuthMiddleware } = require('./middlewares/authMiddleware')
 const { correlationMiddleware,
-  errorHandler,
-  notFoundHandler
-} = require('./middlewares/errorMiddleware')
+       errorHandler,
+       notFoundHandler
+      } = require('./middlewares/errorMiddleware')
 
 const PORT = process.env.PORT || 3000
 const ESPERA_GUARDADO = 700
@@ -27,15 +34,41 @@ const MAX_TITULO = 80
 const TITULO_POR_DEFECTO = 'Documento sin título'
 const COLORES = ['#B9A9E8', '#8B7BE0', '#6F6BD9', '#E8A9D6', '#7FE0C3', '#F2C66D']
 
+const produccion = process.env.NODE_ENV === 'production'
+const secretos = {
+  access: process.env.JWT_ACCESS_SECRET,
+  refresh: process.env.JWT_REFRESH_SECRET
+}
+
+if (produccion && (!secretos.access || !secretos.refresh)) {
+  console.error('[auth] Faltan JWT_ACCESS_SECRET o JWT_REFRESH_SECRET')
+  process.exit(1)
+}
+
+if (!produccion) {
+  if (!secretos.access) secretos.access = crypto.randomBytes(48).toString('hex')
+  if (!secretos.refresh) secretos.refresh = crypto.randomBytes(48).toString('hex')
+  console.warn('[auth] Secretos efimeros en desarrollo: los tokens se invalidan al reiniciar')
+}
+
+const usuarios = crearRepositorioUsuarios()
+const sesiones = crearAlmacenSesiones()
+const auth = crearAuthService({ usuarios, sesiones, secretos })
+const authMiddleware = crearAuthMiddleware(auth)
+const authController = crearAuthController(auth)
+
 const salas = new Map()
 
 const app = express()
+const opcionesCors = crearOpcionesCors()
 app.use(correlationMiddleware)
-app.use(cors())
+app.use(cors(opcionesCors))
+app.use(crearLimitador())
+app.use('/auth', crearLimitador({ max: 30 }))
 app.use(express.json())
 app.use(cookieParser())
-app.use('/auth', authRoutes)
-app.use('/api/documentos', documentRoutes)
+app.use('/auth', crearAuthRoutes(authController, authMiddleware))
+app.use('/api/documentos', authMiddleware.requerirAuth, documentRoutes)
 
 app.get('/', (req, res) => {
   res.send('Backend del Editor Colaborativo activo')
@@ -48,7 +81,7 @@ app.get('/salud', (req, res) => {
 const server = http.createServer(app)
 const io = new Server(server, {
   cors: {
-    origin: '*',
+    ...opcionesCors,
     methods: ['GET', 'POST']
   },
   pingInterval: 10000,
@@ -203,11 +236,7 @@ const tomarBloqueo = (sala, socket, blockId) => {
     ahora: Date.now(),
     ttl: TTL_BLOQUEO,
     liberar: (id) => liberarBloqueo(sala, id),
-    aprobar: (id, userId) =>
-      io.to(sala.id).emit('bloqueo_aprobado', {
-        blockId: id,
-        userId
-      })
+    aprobar: (id, userId) => io.to(sala.id).emit('bloqueo_aprobado', { blockId: id, userId })
   })
 }
 
@@ -237,6 +266,24 @@ const salir = (socket) => {
   if (sala.usuarios.size === 0) vaciarSala(sala)
 }
 
+io.use((socket, next) => {
+  const cabecera = String(socket.handshake.headers.authorization || '')
+  const coincidencia = /^Bearer\s+(.+)$/i.exec(cabecera)
+  const token = (socket.handshake.auth && socket.handshake.auth.token) ||
+    (coincidencia ? coincidencia[1].trim() : null)
+
+  if (!token) {
+    return next(new Error('no_autorizado'))
+  }
+
+  try {
+    socket.data.usuario = auth.verificarAcceso(token)
+    return next()
+  } catch (error) {
+    return next(new Error(error.message || 'no_autorizado'))
+  }
+})
+
 io.on('connection', (socket) => {
   socket.data.salaId = null
   socket.data.intento = 0
@@ -258,9 +305,10 @@ io.on('connection', (socket) => {
 
     if (socket.disconnected || socket.data.intento !== intento) return
 
-    const nombre = String(info.nombre || '').trim().slice(0, 16) || 'JUGADOR'
+    const usuarioAutenticado = socket.data.usuario
+    const nombre = String(usuarioAutenticado.nombre || '').trim().slice(0, 16) || 'JUGADOR'
     const color = COLORES.includes(info.color) ? info.color : COLORES[0]
-    const uid = String(info.uid || '').slice(0, 12)
+    const uid = String(usuarioAutenticado.sub || '').slice(0, 32)
 
     socket.data.salaId = id
     socket.join(id)
@@ -303,22 +351,16 @@ io.on('connection', (socket) => {
   })
 
   socket.on('actualizar_contenido', (datos, ack) => {
-    const responder = typeof ack === 'function' ? ack : () => { }
+    const responder = typeof ack === 'function' ? ack : () => {}
     const sala = salaDe(socket)
-
     if (!sala || !datos || datos.blockId === undefined || datos.blockId === null) {
       responder({ ok: false, motivo: 'sin_sala' })
       return
     }
-
     const blockId = String(datos.blockId).slice(0, 64)
-    const contenido =
-      typeof datos.contenido === 'string'
-        ? datos.contenido.slice(0, MAX_CONTENIDO)
-        : ''
+    const contenido = typeof datos.contenido === 'string' ? datos.contenido.slice(0, MAX_CONTENIDO) : ''
 
     const bloque = sala.bloques.find((b) => b.id === blockId)
-
     if (!bloque) {
       responder({ ok: false, motivo: 'inexistente' })
       return
@@ -331,12 +373,7 @@ io.on('connection', (socket) => {
     }
 
     bloque.contenido = contenido
-
-    socket.to(sala.id).emit('contenido_actualizado', {
-      blockId,
-      contenido
-    })
-
+    socket.to(sala.id).emit('contenido_actualizado', { blockId, contenido })
     marcarSucio(sala, { bloques: true })
     responder({ ok: true })
   })
@@ -387,6 +424,7 @@ io.on('connection', (socket) => {
 
 setInterval(() => {
   const ahora = Date.now()
+  auth.limpiarSesiones()
   for (const sala of Array.from(salas.values())) {
     for (const [blockId, dato] of Array.from(sala.bloqueos.entries())) {
       if (ahora - dato.t >= TTL_BLOQUEO) liberarBloqueo(sala, blockId)
@@ -419,6 +457,15 @@ const iniciar = async () => {
   try {
     await pool.query('SELECT NOW()')
     await documentService.inicializarBaseDeDatos()
+
+    if (process.env.USUARIO_DEMO_CORREO && process.env.USUARIO_DEMO_PASSWORD) {
+      await usuarios.sembrar({
+        nombre: process.env.USUARIO_DEMO_NOMBRE || 'Demo',
+        correo: process.env.USUARIO_DEMO_CORREO,
+        password: process.env.USUARIO_DEMO_PASSWORD,
+        rol: process.env.USUARIO_DEMO_ROL || 'editor'
+      })
+    }
   } catch (error) {
     console.error('No se pudo iniciar el backend. Revisa DATABASE_URL y que PostgreSQL esté activo:', error)
     process.exit(1)

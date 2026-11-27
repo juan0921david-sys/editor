@@ -1,9 +1,17 @@
 
 const express = require('express')
-const router = express.Router()
-const { loginSeguro, refrescarToken } = require('../controllers/authController')
 
-router.post('/login', loginSeguro)
-router.post('/refresh', refrescarToken)
+const crearAuthRoutes = (controller, middleware) => {
+  const router = express.Router()
 
-module.exports = router
+  router.post('/registro', controller.registrar)
+  router.post('/login', controller.login)
+  router.post('/refresh', controller.refrescar)
+  router.post('/logout', controller.cerrarSesion)
+  router.post('/logout-todos', controller.cerrarTodas)
+  router.get('/me', middleware.requerirAuth, controller.yo)
+
+  return router
+}
+
+module.exports = { crearAuthRoutes }

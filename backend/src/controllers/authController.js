@@ -1,63 +1,125 @@
 
-const jwt = require('jsonwebtoken')
+const {
+  loginSchema,
+  registroSchema
+} = require('../validators/authSchemas')
 
-const { loginSchema } = require('../validators/authSchemas')
-const ACCESS_SECRET = process.env.JWT_ACCESS_SECRET || 'access_secret_key_seguro_grado'
-const REFRESH_SECRET = process.env.JWT_REFRESH_SECRET || 'refresh_secret_key_seguro_grado'
+const ESTADOS = {
+  credenciales_invalidas: 401,
+  sin_refresh_token: 401,
+  refresh_invalido: 401,
+  sesion_desconocida: 401,
+  reutilizacion_detectada: 401,
+  sesion_expirada: 401,
+  usuario_inexistente: 401,
+  token_invalido: 401,
+  sesion_revocada: 401,
+  correo_existente: 409
+}
 
-const loginSeguro = (req, res) => {
-  try {
-   const resultado = loginSchema.safeParse(req.body)
-
-if (!resultado.success) {
-  return res.status(400).json({
-    error: 'Los datos de inicio de sesión no son válidos'
+const crearAuthController = (auth) => {
+  const opcionesCookie = () => ({
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'strict',
+    path: '/auth',
+    maxAge: 7 * 24 * 60 * 60 * 1000
   })
-}
 
-const { nombre, uid } = resultado.data
+  const responderError = (res, error) => {
+    const status = ESTADOS[error.message] || 500
 
-const payload = {
-  uid: uid || 'usr_' + Date.now(),
-  nombre
-}
+    if (status === 500) {
+      console.error('[auth] error no controlado:', error)
+    }
 
+    return res.status(status).json({ error: error.message })
+  }
 
-    const accessToken = jwt.sign(payload, ACCESS_SECRET, { expiresIn: '15m' })
+  const registrar = async (req, res) => {
+    const resultado = registroSchema.safeParse(req.body)
 
-    const refreshToken = jwt.sign(payload, REFRESH_SECRET, { expiresIn: '7d' })
+    if (!resultado.success) {
+      return res.status(400).json({ error: 'datos_invalidos' })
+    }
 
-    res.cookie('refreshToken', refreshToken, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'strict',
-      maxAge: 7 * 24 * 60 * 60 * 1000
+    try {
+      const usuario = await auth.registrar(resultado.data)
+      return res.status(201).json({ usuario })
+    } catch (error) {
+      return responderError(res, error)
+    }
+  }
+
+  const login = async (req, res) => {
+    const resultado = loginSchema.safeParse(req.body)
+
+    if (!resultado.success) {
+      return res.status(400).json({ error: 'datos_invalidos' })
+    }
+
+    try {
+      const sesion = await auth.login(resultado.data)
+
+      res.cookie('refreshToken', sesion.refreshToken, opcionesCookie())
+
+      return res.json({
+        accessToken: sesion.accessToken,
+        usuario: sesion.usuario
+      })
+    } catch (error) {
+      return responderError(res, error)
+    }
+  }
+
+  const refrescar = async (req, res) => {
+    try {
+      const sesion = await auth.refrescar(req.cookies && req.cookies.refreshToken)
+
+      res.cookie('refreshToken', sesion.refreshToken, opcionesCookie())
+
+      return res.json({
+        accessToken: sesion.accessToken,
+        usuario: sesion.usuario
+      })
+    } catch (error) {
+      return responderError(res, error)
+    }
+  }
+
+  const cerrarSesion = (req, res) => {
+    auth.cerrarSesion(req.cookies && req.cookies.refreshToken)
+
+    res.clearCookie('refreshToken', opcionesCookie())
+
+    return res.json({ ok: true })
+  }
+
+  const cerrarTodas = (req, res) => {
+    auth.cerrarTodas(req.cookies && req.cookies.refreshToken)
+
+    res.clearCookie('refreshToken', opcionesCookie())
+
+    return res.json({ ok: true })
+  }
+
+  const yo = (req, res) =>
+    res.json({
+      usuario: {
+        id: req.auth.sub,
+        nombre: req.auth.nombre,
+        rol: req.auth.rol
+      }
     })
 
-    return res.json({ accessToken, usuario: payload })
-  } catch (error) {
-    return res.status(500).json({ error: 'Error al generar la sesión segura' })
+  return {
+    registrar,
+    login,
+    refrescar,
+    cerrarSesion,
+    cerrarTodas,
+    yo
   }
 }
 
-const refrescarToken = (req, res) => {
-  const cookies = req.headers.cookie ? Object.fromEntries(req.headers.cookie.split('; ').map(c => c.split('='))) : {}
-  const refreshToken = cookies.refreshToken
-
-  if (!refreshToken) {
-    return res.status(401).json({ error: 'No hay token de refresco disponible' })
-  }
-
-  jwt.verify(refreshToken, REFRESH_SECRET, (err, user) => {
-    if (err) {
-      return res.status(403).json({ error: 'Sesión expirada o inválida' })
-    }
-    const accessToken = jwt.sign({ uid: user.uid, nombre: user.nombre }, ACCESS_SECRET, { expiresIn: '15m' })
-    return res.json({ accessToken })
-  })
-}
-
-module.exports = {
-  loginSeguro,
-  refrescarToken
-}
+module.exports = { crearAuthController }
