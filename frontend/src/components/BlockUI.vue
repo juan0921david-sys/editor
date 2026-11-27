@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <div
     ref="filaRef"
     class="block-row"
@@ -29,12 +29,12 @@
         @touchmove.prevent="alToqueMover"
         @touchend.prevent="alToqueFin"
       >
-        ⋮⋮
+        â‹®â‹®
       </span>
-      <button type="button" title="Añadir bloque debajo" :disabled="soloLectura" @mousedown.prevent @click="$emit('add-block', index)">+</button>
-      <button type="button" class="danger" title="Eliminar" :disabled="bloqueadoPorOtro || soloLectura" @mousedown.prevent @click="$emit('delete-block', index)">×</button>
-      <button type="button" title="Subir" :disabled="isFirst || bloqueadoPorOtro || soloLectura" @mousedown.prevent @click="$emit('move-up', index)">▲</button>
-      <button type="button" title="Bajar" :disabled="isLast || bloqueadoPorOtro || soloLectura" @mousedown.prevent @click="$emit('move-down', index)">▼</button>
+      <button type="button" title="AÃ±adir bloque debajo" :disabled="soloLectura" @mousedown.prevent @click="$emit('add-block', index)">+</button>
+      <button type="button" class="danger" title="Eliminar" :disabled="bloqueadoPorOtro || soloLectura" @mousedown.prevent @click="$emit('delete-block', index)">Ã—</button>
+      <button type="button" title="Subir" :disabled="isFirst || bloqueadoPorOtro || soloLectura" @mousedown.prevent @click="$emit('move-up', index)">â–²</button>
+      <button type="button" title="Bajar" :disabled="isLast || bloqueadoPorOtro || soloLectura" @mousedown.prevent @click="$emit('move-down', index)">â–¼</button>
     </div>
 
     <div class="block-main">
@@ -56,7 +56,7 @@
           @mousedown.prevent
           @click="$emit('toggle-hecho', index)"
         >
-          <span v-if="bloque.hecho">✓</span>
+          <span v-if="bloque.hecho">âœ“</span>
         </button>
 
         <div v-if="bloque.tipo === 'divisor'" class="divisor" tabindex="0" role="separator" @keydown="alTeclaDivisor">
@@ -68,10 +68,10 @@
           class="salto-pagina"
           tabindex="0"
           role="separator"
-          aria-label="Salto de página"
+          aria-label="Salto de pÃ¡gina"
           @keydown="alTeclaDivisor"
         >
-          <span>SALTO DE PÁGINA</span>
+          <span>SALTO DE PÃGINA</span>
         </div>
 
         <div
@@ -109,7 +109,7 @@
   </div>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { ref, computed, watch, onMounted } from 'vue'
 import { TIPOS_CON_ENTER_BLOQUE, TIPOS_SIN_TEXTO, filtrarTipos } from '../utils/tipos'
 import type { Bloque, TipoBloque, CambioContenido, CambioTipo, Movimiento, DestinoArrastre, Punto, PegadoBloques } from '../types/editor'
@@ -169,14 +169,14 @@ const opciones = computed(() => filtrarTipos(filtro.value))
 const menuVisible = computed(() => menuAbierto.value && opciones.value.length > 0)
 
 const placeholders: Partial<Record<TipoBloque, string>> = {
-      h1: 'Título 1',
-      h2: 'Título 2',
-      h3: 'Título 3',
+      h1: 'TÃ­tulo 1',
+      h2: 'TÃ­tulo 2',
+      h3: 'TÃ­tulo 3',
       lista: 'Elemento de lista',
       numerada: 'Elemento numerado',
       tarea: 'Tarea pendiente',
       cita: 'Escribe una cita...',
-      codigo: 'Escribe código...'
+      codigo: 'Escribe cÃ³digo...'
 }
 const placeholder = computed(() => placeholders[props.bloque.tipo] || "Escribe '/' para ver los bloques...")
 
