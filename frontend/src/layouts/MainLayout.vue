@@ -1,4 +1,4 @@
-﻿<template>
+<template>
   <div class="app-wrapper" :class="{ zen: sesion.zen }" @click="cerrarMenu">
     <div class="cabecera no-print" v-show="!sesion.zen">
       <header class="px-navbar px-panel" @click.stop>
@@ -10,7 +10,7 @@
               class="doc-title-input"
               type="text"
               maxlength="80"
-              placeholder="Documento sin tÃ­tulo"
+              placeholder="Documento sin título"
             />
             <nav class="doc-menu">
               <div class="menu-container" v-for="menu in menus" :key="menu.nombre">
@@ -37,7 +37,7 @@
         </div>
 
         <div class="nav-right">
-          <button class="players" title="QuiÃ©n estÃ¡ en el documento" @click="modal = 'compartir'">
+          <button class="players" title="Quién está en el documento" @click="modal = 'compartir'">
             <span
               v-for="u in visibles"
               :key="u.id"
@@ -56,18 +56,18 @@
             :title="sesion.sonido ? 'Silenciar sonidos' : 'Activar sonidos'"
             @click="sesion.alternarSonido"
           >
-            â™ª
+            ♪
           </button>
           <button
             class="px-btn icono-btn"
             :title="sesion.tema === 'dark' ? 'Cambiar a modo claro' : 'Cambiar a modo oscuro'"
             @click="sesion.alternarTema"
           >
-            {{ sesion.tema === 'dark' ? 'â˜€' : 'â˜¾' }}
+            {{ sesion.tema === 'dark' ? '☀' : '☾' }}
           </button>
           <button class="px-btn primary compartir-btn" title="Compartir" @click="modal = 'compartir'">
             <span class="solo-escritorio">COMPARTIR</span>
-            <span class="solo-movil">â‡ª</span>
+            <span class="solo-movil">⇪</span>
           </button>
         </div>
       </header>
@@ -90,29 +90,29 @@
           <button class="px-btn" @click="modal = null">X</button>
         </div>
         <p class="modal-texto">
-          Quien abra este enlace entra al mismo documento y se identifica con su nombre y su ID Ãºnica.
+          Quien abra este enlace entra al mismo documento y se identifica con su nombre y su ID única.
         </p>
         <div class="campo-copia">
           <input readonly :value="enlace" @focus="seleccionarEnlace" />
           <button class="px-btn primary" @click="copiarEnlace">COPIAR</button>
         </div>
-        <div class="codigo-doc">CÃ“DIGO DEL DOCUMENTO <strong>{{ sesion.documentoId }}</strong></div>
+        <div class="codigo-doc">CÓDIGO DEL DOCUMENTO <strong>{{ sesion.documentoId }}</strong></div>
         <h3 class="modal-sub">EN ESTE DOCUMENTO ({{ jugadores.length }})</h3>
         <ul class="lista-personas">
           <li v-for="u in jugadores" :key="u.id">
             <span class="chip" :style="{ background: u.color }">{{ inicial(u.nombre) }}</span>
-            <span class="nombre">{{ u.nombre }}<em v-if="esYo(u)"> (tÃº)</em></span>
+            <span class="nombre">{{ u.nombre }}<em v-if="esYo(u)"> (tú)</em></span>
             <code>#{{ u.uid || '------' }}</code>
           </li>
         </ul>
-        <p class="modal-nota" v-if="jugadores.length === 1">Por ahora estÃ¡s solo. Comparte el enlace para trabajar en conjunto.</p>
+        <p class="modal-nota" v-if="jugadores.length === 1">Por ahora estás solo. Comparte el enlace para trabajar en conjunto.</p>
       </div>
     </div>
 
     <div class="modal-fondo no-print" v-if="modal === 'pagina'" @click.self="modal = null">
-      <div class="modal px-panel" role="dialog" aria-label="Configurar pÃ¡gina">
+      <div class="modal px-panel" role="dialog" aria-label="Configurar página">
         <div class="modal-cabecera">
-          <span>CONFIGURAR PÃGINA</span>
+          <span>CONFIGURAR PÁGINA</span>
           <button class="px-btn" @click="modal = null">X</button>
         </div>
         <div class="grupo-pagina" v-for="grupo in gruposPagina" :key="grupo.clave">
@@ -134,8 +134,8 @@
           </div>
         </div>
         <p class="modal-nota">
-          PÃ¡gina actual: {{ resumenPagina }}. Se guarda en este navegador y se usa para mostrar, imprimir y exportar el
-          documento; no cambia lo que ven las demÃ¡s personas.
+          Página actual: {{ resumenPagina }}. Se guarda en este navegador y se usa para mostrar, imprimir y exportar el
+          documento; no cambia lo que ven las demás personas.
         </p>
       </div>
     </div>
@@ -168,17 +168,17 @@ const seleccionarEnlace = (evento: FocusEvent) => {
 }
 
 const atajos = [
-  ['/', 'Abrir el menÃº de bloques (incluye el salto de pÃ¡gina)'],
-  ['Enter', 'Salto de lÃ­nea (en tÃ­tulos y listas crea el siguiente bloque)'],
+  ['/', 'Abrir el menú de bloques (incluye el salto de página)'],
+  ['Enter', 'Salto de línea (en títulos y listas crea el siguiente bloque)'],
   ['Ctrl + Enter', 'Nuevo bloque debajo'],
-  ['Shift + Enter', 'Salto de lÃ­nea sin crear pÃ¡rrafo'],
-  ['Backspace', 'En un bloque vacÃ­o: volver a texto o eliminarlo'],
-  ['Alt + â†‘ / â†“', 'Mover el bloque'],
-  ['â†‘ / â†“', 'Saltar entre bloques desde el borde'],
+  ['Shift + Enter', 'Salto de línea sin crear párrafo'],
+  ['Backspace', 'En un bloque vacío: volver a texto o eliminarlo'],
+  ['Alt + ↑ / ↓', 'Mover el bloque'],
+  ['↑ / ↓', 'Saltar entre bloques desde el borde'],
   ['Ctrl + Z / Ctrl + Y', 'Deshacer / rehacer'],
   ['Ctrl + B / I / U', 'Negrita / cursiva / subrayado'],
   ['Ctrl + .', 'Modo enfoque'],
-  ['Esc', 'Cerrar menÃºs o salir del enfoque']
+  ['Esc', 'Cerrar menús o salir del enfoque']
 ]
 
 const enlace = computed(() => sesion.enlaceDocumento())
@@ -194,12 +194,12 @@ const extra = computed(() => Math.max(0, jugadores.value.length - 3))
 const esYo = (u: Usuario) => u.id === 'yo' || u.id === sesion.miId || u.uid === sesion.uid
 const inicial = (nombre: string) => (String(nombre || '?').trim()[0] || '?').toUpperCase()
 
-const textoCm = (cm: [number, number]) => `${cm[0].toFixed(1).replace('.', ',')} Ã— ${cm[1].toFixed(1).replace('.', ',')} cm`
+const textoCm = (cm: [number, number]) => `${cm[0].toFixed(1).replace('.', ',')} × ${cm[1].toFixed(1).replace('.', ',')} cm`
 
 const gruposPagina = computed<{ clave: keyof PaginaConfig; titulo: string; opciones: { valor: string; etiqueta: string; detalle: string }[] }[]>(() => [
   {
     clave: 'tamano',
-    titulo: 'TAMAÃ‘O',
+    titulo: 'TAMAÑO',
     opciones: Object.entries(TAMANOS_PAGINA).map(([valor, t]) => ({
       valor,
       etiqueta: t.etiqueta,
@@ -208,7 +208,7 @@ const gruposPagina = computed<{ clave: keyof PaginaConfig; titulo: string; opcio
   },
   {
     clave: 'orientacion',
-    titulo: 'ORIENTACIÃ“N',
+    titulo: 'ORIENTACIÓN',
     opciones: [
       { valor: 'vertical', etiqueta: 'VERTICAL', detalle: 'Hoja de pie' },
       { valor: 'horizontal', etiqueta: 'HORIZONTAL', detalle: 'Hoja acostada' }
@@ -216,7 +216,7 @@ const gruposPagina = computed<{ clave: keyof PaginaConfig; titulo: string; opcio
   },
   {
     clave: 'margen',
-    titulo: 'MÃRGENES',
+    titulo: 'MÁRGENES',
     opciones: Object.entries(MARGENES_PAGINA).map(([valor, m]) => ({
       valor,
       etiqueta: m.etiqueta,
@@ -234,7 +234,7 @@ const resumenPagina = computed(() => {
 watch(
   () => sesion.titulo,
   (valor) => {
-    document.title = `${(valor || '').trim() || 'Documento sin tÃ­tulo'} Â· Editor_Docs`
+    document.title = `${(valor || '').trim() || 'Documento sin título'} · Editor_Docs`
   },
   { immediate: true }
 )
@@ -249,9 +249,9 @@ const menus = computed(() => [
       { etiqueta: 'Descargar como Word (.docx)', accion: 'docx' },
       { etiqueta: 'Descargar como texto (.txt)', accion: 'txt' },
       { etiqueta: 'Descargar como Markdown (.md)', accion: 'md' },
-      { etiqueta: 'Descargar como pÃ¡gina web (.html)', accion: 'html' },
+      { etiqueta: 'Descargar como página web (.html)', accion: 'html' },
       { separador: true },
-      { etiqueta: 'Configurar pÃ¡gina...', accion: 'pagina' },
+      { etiqueta: 'Configurar página...', accion: 'pagina' },
       { etiqueta: 'Imprimir', accion: 'imprimir', atajo: 'Ctrl+P' },
       { separador: true },
       { etiqueta: 'Cambiar jugador', accion: 'jugador' }

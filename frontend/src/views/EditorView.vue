@@ -1,6 +1,6 @@
-﻿<template>
+<template>
   <div class="editor-container" ref="lienzoRef">
-    <div v-if="!conectado" class="aviso-offline no-print">SIN CONEXIÃ“N Â· EDICIÃ“N EN PAUSA</div>
+    <div v-if="!conectado" class="aviso-offline no-print">SIN CONEXIÓN · EDICIÓN EN PAUSA</div>
 
     <div class="escala" :style="estiloEscala">
       <div class="hoja" ref="hojaRef" :class="{ movil: modoMovil }" :style="estiloHoja">
@@ -60,21 +60,21 @@
           />
 
           <button v-if="sesion.sincronizado && bloques.length === 0" class="empty-state" @click="agregarBloqueFinal">
-            Haz clic aquÃ­ para empezar a escribir...
+            Haz clic aquí para empezar a escribir...
           </button>
         </div>
       </div>
     </div>
 
     <footer class="barra-estado no-print" v-show="!sesion.zen">
-      <span class="estado-item" :title="conectado ? 'Conectado al servidor' : 'Sin conexiÃ³n'">
+      <span class="estado-item" :title="conectado ? 'Conectado al servidor' : 'Sin conexión'">
         <span class="led" :class="{ on: conectado }"></span>
         <span class="solo-escritorio">{{ conectado ? 'ONLINE' : 'OFFLINE' }}</span>
       </span>
       <button class="estado-item boton" :title="nombresConectados" @click="emitirVentana('abrir-compartir')">
         {{ sesion.usuarios.length }} JUG
       </button>
-      <span v-if="!modoMovil" class="estado-item">PÃG {{ paginaActual }}/{{ paginas }}</span>
+      <span v-if="!modoMovil" class="estado-item">PÁG {{ paginaActual }}/{{ paginas }}</span>
       <span class="estado-item solo-escritorio">{{ totalPalabras }} PAL</span>
       <span class="estado-item solo-escritorio">{{ totalCaracteres }} CAR</span>
       <span v-if="puedeEditar" class="estado-item estado-guardado" :class="'estado-' + sesion.estadoGuardado">{{ textoGuardado }}</span>
@@ -82,13 +82,13 @@
       <button
         v-if="!modoMovil"
         class="estado-item boton"
-        title="Configurar pÃ¡gina"
+        title="Configurar página"
         @click="emitirVentana('abrir-configuracion-pagina')"
       >
         {{ etiquetaPagina }}
       </button>
       <div v-if="!modoMovil" class="zoom-control">
-        <button class="mini-btn" title="Alejar" @click="sesion.cambiarZoom(-10)">âˆ’</button>
+        <button class="mini-btn" title="Alejar" @click="sesion.cambiarZoom(-10)">−</button>
         <span class="zoom-valor">{{ sesion.zoom }}%</span>
         <button class="mini-btn" title="Acercar" @click="sesion.cambiarZoom(10)">+</button>
       </div>
@@ -204,7 +204,7 @@ const etiquetaPagina = computed(() => {
   return `${base.etiqueta}${sesion.pagina.orientacion === 'horizontal' ? ' HORIZ.' : ''}`
 })
 
-const nombresConectados = computed(() => sesion.usuarios.map((u) => u.nombre).join(', ') || 'Nadie mÃ¡s conectado')
+const nombresConectados = computed(() => sesion.usuarios.map((u) => u.nombre).join(', ') || 'Nadie más conectado')
 
 const textoGuardado = computed(
   () => ({ guardado: 'GUARDADO', guardando: 'GUARDANDO...', error: 'ERROR AL GUARDAR' })[sesion.estadoGuardado] || 'GUARDADO'
@@ -537,8 +537,7 @@ const alCambiarTipoActivo = (e: Event) => {
   if (!(e instanceof CustomEvent)) return
   const tipo: unknown = e.detail
   if (indiceActivo.value !== -1 && tipoValido(tipo)) cambiarTipo(indiceActivo.value, tipo)
-}git status -sb
-
+}
 
 const alternarHecho = (index: number) => {
   const bloque = bloques.value[index]
@@ -809,13 +808,13 @@ const recibirPresencia = (lista: Usuario[]) => {
   if (previos.size > 0) {
     limpia.forEach((u) => {
       if (!previos.has(String(u.id)) && String(u.id) !== String(sesion.miId)) {
-        sesion.mostrarAviso(`${u.nombre.toUpperCase()} SE UNIÃ“`)
+        sesion.mostrarAviso(`${u.nombre.toUpperCase()} SE UNIÓ`)
         sonidos.entrar()
       }
     })
     sesion.usuarios.forEach((u) => {
       if (!nuevos.has(String(u.id))) {
-        sesion.mostrarAviso(`${u.nombre.toUpperCase()} SALIÃ“`)
+        sesion.mostrarAviso(`${u.nombre.toUpperCase()} SALIÓ`)
         sonidos.salir()
       }
     })

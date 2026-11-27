@@ -1,23 +1,23 @@
-﻿<template>
+<template>
   <div class="barra px-panel no-print" @mousedown.prevent @scroll="cerrar">
     <div class="grupo">
       <button class="sel" :disabled="!sesion.activo" title="Tipo de bloque" @click.stop="alternar('tipo', $event)">
-        <span>{{ etiquetaTipo }}</span><i>â–¾</i>
+        <span>{{ etiquetaTipo }}</span><i>▾</i>
       </button>
     </div>
 
     <div class="grupo">
-      <button class="tool-btn" title="Deshacer (Ctrl+Z)" @click="emitir('deshacer-documento')">â†¶</button>
-      <button class="tool-btn" title="Rehacer (Ctrl+Y)" @click="emitir('rehacer-documento')">â†·</button>
+      <button class="tool-btn" title="Deshacer (Ctrl+Z)" @click="emitir('deshacer-documento')">↶</button>
+      <button class="tool-btn" title="Rehacer (Ctrl+Y)" @click="emitir('rehacer-documento')">↷</button>
     </div>
 
     <div class="grupo">
       <button class="sel ancho" title="Fuente" @click.stop="alternar('fuente', $event)">
-        <span :style="{ fontFamily: `'${fuenteActual}'` }">{{ fuenteActual }}</span><i>â–¾</i>
+        <span :style="{ fontFamily: `'${fuenteActual}'` }">{{ fuenteActual }}</span><i>▾</i>
       </button>
-      <button class="tool-btn" title="Reducir tamaÃ±o" @click="cambiarTamano(-1)">âˆ’</button>
+      <button class="tool-btn" title="Reducir tamaño" @click="cambiarTamano(-1)">−</button>
       <span class="valor">{{ tamanoActual }}</span>
-      <button class="tool-btn" title="Aumentar tamaÃ±o" @click="cambiarTamano(1)">+</button>
+      <button class="tool-btn" title="Aumentar tamaño" @click="cambiarTamano(1)">+</button>
     </div>
 
     <div class="grupo">
@@ -115,7 +115,7 @@
           :title="c"
           @click="aplicarColor('hiliteColor', c)"
         ></button>
-        <button class="cuadro quitar-fondo" title="Quitar resaltado" @click="aplicarColor('hiliteColor', 'transparent')">Ã—</button>
+        <button class="cuadro quitar-fondo" title="Quitar resaltado" @click="aplicarColor('hiliteColor', 'transparent')">×</button>
       </template>
     </div>
   </Teleport>
