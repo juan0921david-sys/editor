@@ -8,12 +8,13 @@ require('dotenv').config()
 
 const pool = require('./config/db')
 const documentService = require('./services/documentService')
+const { adquirirBloqueo } = require('./services/blockLockService')
 const documentRoutes = require('./routes/document.routes')
 const authRoutes = require('./routes/authRoutes')
 const { correlationMiddleware,
-       errorHandler,
-       notFoundHandler
-      } = require('./middlewares/errorMiddleware')
+  errorHandler,
+  notFoundHandler
+} = require('./middlewares/errorMiddleware')
 
 const PORT = process.env.PORT || 3000
 const ESPERA_GUARDADO = 700
@@ -198,18 +199,16 @@ const liberarBloqueo = (sala, blockId) => {
 }
 
 const tomarBloqueo = (sala, socket, blockId) => {
-  const actual = sala.bloqueos.get(blockId)
-  if (actual && actual.userId !== socket.id) return false
-  for (const [otro, dato] of sala.bloqueos) {
-    if (dato.userId === socket.id && otro !== blockId) liberarBloqueo(sala, otro)
-  }
-  if (actual) {
-    actual.t = Date.now()
-  } else {
-    sala.bloqueos.set(blockId, { userId: socket.id, t: Date.now() })
-    io.to(sala.id).emit('bloqueo_aprobado', { blockId, userId: socket.id })
-  }
-  return true
+  return adquirirBloqueo(sala, socket.id, blockId, {
+    ahora: Date.now(),
+    ttl: TTL_BLOQUEO,
+    liberar: (id) => liberarBloqueo(sala, id),
+    aprobar: (id, userId) =>
+      io.to(sala.id).emit('bloqueo_aprobado', {
+        blockId: id,
+        userId
+      })
+  })
 }
 
 const rechazarBloqueo = (sala, socket, blockId) => {
@@ -304,14 +303,26 @@ io.on('connection', (socket) => {
   })
 
   socket.on('actualizar_contenido', (datos, ack) => {
-    const responder = typeof ack === 'function' ? ack : () => {}
+    const responder = typeof ack === 'function' ? ack : () => { }
     const sala = salaDe(socket)
+
     if (!sala || !datos || datos.blockId === undefined || datos.blockId === null) {
       responder({ ok: false, motivo: 'sin_sala' })
       return
     }
+
     const blockId = String(datos.blockId).slice(0, 64)
-    const contenido = typeof datos.contenido === 'string' ? datos.contenido.slice(0, MAX_CONTENIDO) : ''
+    const contenido =
+      typeof datos.contenido === 'string'
+        ? datos.contenido.slice(0, MAX_CONTENIDO)
+        : ''
+
+    const bloque = sala.bloques.find((b) => b.id === blockId)
+
+    if (!bloque) {
+      responder({ ok: false, motivo: 'inexistente' })
+      return
+    }
 
     if (!tomarBloqueo(sala, socket, blockId)) {
       rechazarBloqueo(sala, socket, blockId)
@@ -319,14 +330,13 @@ io.on('connection', (socket) => {
       return
     }
 
-    const bloque = sala.bloques.find((b) => b.id === blockId)
-    if (!bloque) {
-      responder({ ok: false, motivo: 'inexistente' })
-      return
-    }
-
     bloque.contenido = contenido
-    socket.to(sala.id).emit('contenido_actualizado', { blockId, contenido })
+
+    socket.to(sala.id).emit('contenido_actualizado', {
+      blockId,
+      contenido
+    })
+
     marcarSucio(sala, { bloques: true })
     responder({ ok: true })
   })
@@ -379,7 +389,7 @@ setInterval(() => {
   const ahora = Date.now()
   for (const sala of Array.from(salas.values())) {
     for (const [blockId, dato] of Array.from(sala.bloqueos.entries())) {
-      if (ahora - dato.t > TTL_BLOQUEO) liberarBloqueo(sala, blockId)
+      if (ahora - dato.t >= TTL_BLOQUEO) liberarBloqueo(sala, blockId)
     }
     const limpia = !sala.temporizador && !sala.guardando && !sala.tituloSucio && !sala.bloquesSucios
     if (sala.usuarios.size === 0 && limpia) salas.delete(sala.id)

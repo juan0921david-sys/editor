@@ -99,10 +99,16 @@
 <script setup>
 import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue'
 import { io } from 'socket.io-client'
+import type { Socket } from 'socket.io-client'
+import type {
+  Bloque, BloquePersistido, TipoBloque, Usuario, EstadoInicial,
+  EventosServidor, EventosCliente, CambioContenido, CambioTipo,
+  Movimiento, DestinoArrastre, Punto, PegadoBloques
+} from '../types/editor'
 import BlockUI from '../components/BlockUI.vue'
 import { COLORES, TAMANOS_PAGINA, ESPACIO_ENTRE_PAGINAS, useSesionStore } from '../stores/sesion'
 import { sonidos } from '../utils/sonidos'
-import { normalizarTipo, TIPOS_SIN_TEXTO } from '../utils/tipos'
+import { normalizarTipo, tipoValido, TIPOS_SIN_TEXTO } from '../utils/tipos'
 import { sanitizar } from '../utils/sanitizar'
 import { exportar, textoPlano } from '../utils/exportar'
 
@@ -117,25 +123,27 @@ const SEPARACION_BLOQUES = 2
 const MAX_LINEAS_PEGADAS = 500
 const TIPOS_DE_LISTA = ['lista', 'numerada', 'tarea']
 
-let socket = null
-let reintentoUnirse = null
+let socket: Socket<EventosServidor, EventosCliente> | null = null
+let reintentoUnirse: ReturnType<typeof setTimeout> | undefined
 let aplicandoRemoto = false
-let tituloPendiente = null
+let tituloPendiente: string | null = null
 let cuadroPendiente = false
 let cuadroScroll = false
-let observador = null
-let estiloImpresion = null
-const historial = []
-const rehacerPila = []
-const pendientes = new Map()
+let observador: ResizeObserver | null = null
+let estiloImpresion: HTMLStyleElement | null = null
+interface EntradaHistorial { antes: BloquePersistido[]; despues: BloquePersistido[] }
+const historial: EntradaHistorial[] = []
+const rehacerPila: EntradaHistorial[] = []
+const pendientes = new Map<string, string>()
+const saltosPagina = new WeakMap<HTMLElement, number>()
 
-const lienzoRef = ref(null)
-const hojaRef = ref(null)
-const contenidoRef = ref(null)
+const lienzoRef = ref<HTMLElement | null>(null)
+const hojaRef = ref<HTMLElement | null>(null)
+const contenidoRef = ref<HTMLElement | null>(null)
 const conectado = ref(false)
-const activoId = ref(null)
-const arrastrando = ref(null)
-const destino = ref(null)
+const activoId = ref<string | null>(null)
+const arrastrando = ref<number | null>(null)
+const destino = ref<DestinoArrastre | null>(null)
 const anchoVentana = ref(window.innerWidth)
 const anchoDisponible = ref(0)
 const paginas = ref(1)
@@ -148,7 +156,7 @@ const nuevoId = () => {
   return `${Date.now().toString(36)}${secuenciaIds.toString(36)}${Math.random().toString(36).slice(2, 7)}`
 }
 
-const crearBloque = (tipo = 'parrafo', contenido = '') => ({
+const crearBloque = (tipo: TipoBloque = 'parrafo', contenido = ''): Bloque => ({
   id: nuevoId(),
   contenido,
   tipo,
@@ -156,7 +164,7 @@ const crearBloque = (tipo = 'parrafo', contenido = '') => ({
   bloqueadoPor: null
 })
 
-const bloques = ref([])
+const bloques = ref<Bloque[]>([])
 
 const puedeEditar = computed(() => conectado.value && sesion.sincronizado)
 
@@ -202,7 +210,7 @@ const textoGuardado = computed(
   () => ({ guardado: 'GUARDADO', guardando: 'GUARDANDO...', error: 'ERROR AL GUARDAR' })[sesion.estadoGuardado] || 'GUARDADO'
 )
 
-const emitirVentana = (nombre) => window.dispatchEvent(new CustomEvent(nombre))
+const emitirVentana = (nombre: string) => window.dispatchEvent(new CustomEvent(nombre))
 
 const sinPermiso = () => {
   if (puedeEditar.value) return false
@@ -210,7 +218,7 @@ const sinPermiso = () => {
   return true
 }
 
-const bloqueadoPorOtro = (bloque) => !!(bloque && bloque.bloqueadoPor && String(bloque.bloqueadoPor) !== String(sesion.miId))
+const bloqueadoPorOtro = (bloque: Bloque | undefined) => !!(bloque && bloque.bloqueadoPor && String(bloque.bloqueadoPor) !== String(sesion.miId))
 
 const indiceActivo = computed(() => bloques.value.findIndex((b) => String(b.id) === String(activoId.value)))
 const tipoActivo = computed(() => (indiceActivo.value === -1 ? null : bloques.value[indiceActivo.value].tipo))
@@ -243,12 +251,12 @@ const paginar = () => {
   cuadroPendiente = false
   const contenedor = contenidoRef.value
   if (!contenedor) return
-  const filas = Array.from(contenedor.querySelectorAll(':scope > .block-row'))
+  const filas = Array.from(contenedor.querySelectorAll<HTMLElement>(':scope > .block-row'))
 
   if (modoMovil.value) {
     filas.forEach((fila) => {
       fila.style.removeProperty('--salto')
-      fila.__salto = undefined
+      saltosPagina.delete(fila)
     })
     if (paginas.value !== 1) paginas.value = 1
     return
@@ -260,7 +268,7 @@ const paginar = () => {
   const pasoPagina = g.alto + ESPACIO_ENTRE_PAGINAS
   let cursor = margen
   let finUltimo = margen
-  let forzarPagina = null
+  let forzarPagina: number | null = null
 
   filas.forEach((fila, i) => {
     const bloque = bloques.value[i]
@@ -295,9 +303,9 @@ const paginar = () => {
     }
 
     const espacio = Math.round((y - cursor) * 100) / 100
-    if (fila.__salto !== espacio) {
+    if (saltosPagina.get(fila) !== espacio) {
       fila.style.setProperty('--salto', `${espacio}px`)
-      fila.__salto = espacio
+      saltosPagina.set(fila, espacio)
     }
     cursor = y + alto + SEPARACION_BLOQUES
     finUltimo = y + alto
@@ -356,7 +364,7 @@ const aplicarEstiloImpresion = () => {
 watch([bloques, geo, modoMovil], programarPaginado, { deep: true, flush: 'post' })
 watch(geo, aplicarEstiloImpresion)
 
-const aplicarTituloRemoto = (titulo) => {
+const aplicarTituloRemoto = (titulo: string) => {
   aplicandoRemoto = true
   sesion.titulo = titulo
   aplicandoRemoto = false
@@ -379,7 +387,7 @@ watch(
 const instantanea = () =>
   bloques.value.map((b) => ({ id: String(b.id), contenido: b.contenido, tipo: b.tipo, hecho: b.hecho }))
 
-const registrar = (antes) => {
+const registrar = (antes: BloquePersistido[]) => {
   historial.push({ antes, despues: instantanea() })
   if (historial.length > LIMITE_HISTORIAL) historial.shift()
   rehacerPila.length = 0
@@ -389,7 +397,7 @@ const emitirEstructura = () => {
   if (socket && puedeEditar.value) socket.emit('estructura_actualizada', instantanea())
 }
 
-const enviarContenido = (blockId, contenido) => {
+const enviarContenido = (blockId: string, contenido: string) => {
   pendientes.set(blockId, contenido)
   if (!socket) return
   socket.emit('actualizar_contenido', { blockId, contenido }, () => {
@@ -409,9 +417,9 @@ const reenviarPendientes = () => {
   })
 }
 
-const enfocarBloque = async (id, alFinal = true, soloSiPerdido = false) => {
+const enfocarBloque = async (id: string, alFinal = true, soloSiPerdido = false) => {
   await nextTick()
-  const editor = document.querySelector(`[data-block-id="${id}"] .rich-textarea`)
+  const editor = document.querySelector<HTMLElement>(`[data-block-id="${CSS.escape(id)}"] .rich-textarea`)
   if (!editor) return
   if (soloSiPerdido && document.activeElement === editor) return
   editor.focus({ preventScroll: false })
@@ -419,11 +427,12 @@ const enfocarBloque = async (id, alFinal = true, soloSiPerdido = false) => {
   rango.selectNodeContents(editor)
   rango.collapse(!alFinal)
   const seleccion = window.getSelection()
+  if (!seleccion) return
   seleccion.removeAllRanges()
   seleccion.addRange(rango)
 }
 
-const buscarEditable = (desde, direccion) => {
+const buscarEditable = (desde: number, direccion: number) => {
   let i = desde + direccion
   while (i >= 0 && i < bloques.value.length) {
     const b = bloques.value[i]
@@ -446,7 +455,7 @@ const agregarBloqueFinal = () => {
   enfocarBloque(bloque.id)
 }
 
-const agregarBloqueDespues = (index, tipo = 'parrafo') => {
+const agregarBloqueDespues = (index: number, tipo: TipoBloque = 'parrafo') => {
   if (sinPermiso()) return
   const antes = instantanea()
   const bloque = crearBloque(tipo)
@@ -459,9 +468,9 @@ const agregarBloqueDespues = (index, tipo = 'parrafo') => {
   enfocarBloque(bloque.id)
 }
 
-const escaparHtml = (texto) => texto.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+const escaparHtml = (texto: string) => texto.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
 
-const pegarBloques = ({ index, lineas }) => {
+const pegarBloques = ({ index, lineas }: PegadoBloques) => {
   if (!puedeEditar.value || !Array.isArray(lineas)) return
   const actual = bloques.value[index]
   if (!actual) return
@@ -479,7 +488,7 @@ const pegarBloques = ({ index, lineas }) => {
   sonidos.agregar()
 }
 
-const quitarBloque = (index) => {
+const quitarBloque = (index: number) => {
   const bloque = bloques.value[index]
   if (!puedeEditar.value || !bloque || bloqueadoPorOtro(bloque)) {
     sonidos.error()
@@ -495,11 +504,11 @@ const quitarBloque = (index) => {
   return true
 }
 
-const eliminarBloque = (index) => {
+const eliminarBloque = (index: number) => {
   quitarBloque(index)
 }
 
-const cambiarTipo = (index, tipo) => {
+const cambiarTipo = (index: number, tipo: TipoBloque) => {
   const bloque = bloques.value[index]
   if (!puedeEditar.value || !bloque || bloqueadoPorOtro(bloque) || bloque.tipo === tipo) return
   const antes = instantanea()
@@ -522,13 +531,16 @@ const cambiarTipo = (index, tipo) => {
   enfocarBloque(objetivo, true, !sinTexto)
 }
 
-const alCambiarTipo = ({ index, tipo }) => cambiarTipo(index, tipo)
+const alCambiarTipo = ({ index, tipo }: CambioTipo) => cambiarTipo(index, tipo)
 
-const alCambiarTipoActivo = (e) => {
-  if (indiceActivo.value !== -1) cambiarTipo(indiceActivo.value, e.detail)
-}
+const alCambiarTipoActivo = (e: Event) => {
+  if (!(e instanceof CustomEvent)) return
+  const tipo: unknown = e.detail
+  if (indiceActivo.value !== -1 && tipoValido(tipo)) cambiarTipo(indiceActivo.value, tipo)
+}git status -sb
 
-const alternarHecho = (index) => {
+
+const alternarHecho = (index: number) => {
   const bloque = bloques.value[index]
   if (!puedeEditar.value || !bloque || bloqueadoPorOtro(bloque)) {
     sonidos.error()
@@ -541,7 +553,7 @@ const alternarHecho = (index) => {
   sonidos.clic()
 }
 
-const alPulsarEnter = (index) => {
+const alPulsarEnter = (index: number) => {
   const actual = bloques.value[index]
   if (!actual) return
   const vacio = textoPlano(actual.contenido).trim() === ''
@@ -552,7 +564,7 @@ const alPulsarEnter = (index) => {
   agregarBloqueDespues(index, TIPOS_DE_LISTA.includes(actual.tipo) ? actual.tipo : 'parrafo')
 }
 
-const alBorrarVacio = (index) => {
+const alBorrarVacio = (index: number) => {
   const bloque = bloques.value[index]
   if (!bloque) return
   if (bloque.tipo !== 'parrafo') {
@@ -567,10 +579,10 @@ const alBorrarVacio = (index) => {
   else if (siguiente !== null) enfocarBloque(siguiente, false)
 }
 
-const moverA = (desde, hacia) => {
+const moverA = (desde: number, hacia: number) => {
   if (hacia < 0 || hacia >= bloques.value.length || desde === hacia) return false
   const bloque = bloques.value[desde]
-  if (!puedeEditar.value || bloqueadoPorOtro(bloque)) {
+  if (!puedeEditar.value || !bloque || bloqueadoPorOtro(bloque)) {
     sonidos.error()
     return false
   }
@@ -583,28 +595,28 @@ const moverA = (desde, hacia) => {
   return true
 }
 
-const moverPorTeclado = ({ index, dir }) => {
+const moverPorTeclado = ({ index, dir }: Movimiento) => {
   const id = String(bloques.value[index].id)
   if (moverA(index, index + dir)) enfocarBloque(id, true, true)
 }
 
-const navegar = ({ index, dir }) => {
+const navegar = ({ index, dir }: Movimiento) => {
   const objetivo = buscarEditable(index, dir)
   if (objetivo) enfocarBloque(String(objetivo.id), dir < 0)
 }
 
-const iniciarArrastre = (index) => {
+const iniciarArrastre = (index: number) => {
   arrastrando.value = index
   destino.value = null
 }
 
-const sobreBloque = ({ index, despues }) => {
+const sobreBloque = ({ index, despues }: DestinoArrastre) => {
   if (arrastrando.value === null) return
   const actual = destino.value
   if (!actual || actual.index !== index || actual.despues !== despues) destino.value = { index, despues }
 }
 
-const alArrastreToque = ({ x, y }) => {
+const alArrastreToque = ({ x, y }: Punto) => {
   if (arrastrando.value === null) return
   const elemento = document.elementFromPoint(x, y)
   if (!elemento) return
@@ -618,7 +630,7 @@ const alArrastreToque = ({ x, y }) => {
   }
 }
 
-const indicadorDe = (index) => {
+const indicadorDe = (index: number): 'arriba' | 'abajo' | null => {
   if (arrastrando.value === null || !destino.value || destino.value.index !== index) return null
   return destino.value.despues ? 'abajo' : 'arriba'
 }
@@ -638,10 +650,8 @@ const soltar = () => {
   moverA(desde, hacia)
 }
 
-const actualizarContenido = (param1, param2) => {
+const actualizarContenido = ({ id, contenido }: CambioContenido) => {
   if (!puedeEditar.value) return
-  const id = (param1 && param1.id) !== undefined ? String(param1.id) : String(param1)
-  const contenido = (param1 && param1.contenido) !== undefined ? param1.contenido : param2
 
   const bloque = bloques.value.find((b) => String(b.id) === id)
 
@@ -651,12 +661,12 @@ const actualizarContenido = (param1, param2) => {
   enviarContenido(id, contenido)
 }
 
-const enviarSolicitudBloqueo = (blockId) => {
+const enviarSolicitudBloqueo = (blockId: string) => {
   const strId = String(blockId)
   const bloque = bloques.value.find((b) => String(b.id) === strId)
 
   if (bloque && bloqueadoPorOtro(bloque)) {
-    if (document.activeElement) document.activeElement.blur()
+    if (document.activeElement instanceof HTMLElement) document.activeElement.blur()
     return
   }
 
@@ -664,13 +674,13 @@ const enviarSolicitudBloqueo = (blockId) => {
   if (socket && puedeEditar.value) socket.emit('solicitar_bloqueo', strId)
 }
 
-const enviarLiberacionBloqueo = (blockId) => {
+const enviarLiberacionBloqueo = (blockId: string) => {
   const strId = String(blockId)
   if (String(activoId.value) === strId) activoId.value = null
   if (socket && puedeEditar.value) socket.emit('liberar_bloqueo', strId)
 }
 
-const aplicarInstantanea = (lista) => {
+const aplicarInstantanea = (lista: BloquePersistido[]) => {
   const ids = new Set(lista.map((i) => String(i.id)))
   const eliminados = bloques.value.filter((b) => !ids.has(String(b.id)))
   if (eliminados.some(bloqueadoPorOtro)) return false
@@ -698,7 +708,7 @@ const editorActivo = () => {
   return !!(el && el.classList && el.classList.contains('rich-textarea'))
 }
 
-const usarHistorialNativo = (comando) => {
+const usarHistorialNativo = (comando: 'undo' | 'redo') => {
   if (!editorActivo()) return false
   try {
     if (document.queryCommandEnabled(comando)) {
@@ -745,10 +755,10 @@ const rehacer = () => {
   }
 }
 
-const alTeclaGlobal = (e) => {
+const alTeclaGlobal = (e: KeyboardEvent) => {
   const control = e.ctrlKey || e.metaKey
   if (!control || e.altKey) return
-  if (e.target && e.target.closest && e.target.closest('input, textarea')) return
+  if (e.target instanceof Element && e.target.closest('input, textarea')) return
   const tecla = e.key.toLowerCase()
   if (tecla === 'z' && !e.shiftKey) {
     e.preventDefault()
@@ -759,7 +769,7 @@ const alTeclaGlobal = (e) => {
   }
 }
 
-const recibirEstructura = (lista) => {
+const recibirEstructura = (lista: BloquePersistido[]) => {
   if (!Array.isArray(lista)) return
   finArrastre()
 
@@ -784,7 +794,7 @@ const recibirEstructura = (lista) => {
   bloques.value.splice(0, bloques.value.length, ...fusion)
 }
 
-const recibirPresencia = (lista) => {
+const recibirPresencia = (lista: Usuario[]) => {
   if (!Array.isArray(lista)) return
   const limpia = lista.map((u) => ({
     id: String(u.id),
@@ -814,9 +824,12 @@ const recibirPresencia = (lista) => {
   sesion.usuarios.splice(0, sesion.usuarios.length, ...limpia)
 }
 
-const alExportar = async (e) => {
-  const formato = e.detail && e.detail.formato
-  if (!formato) return
+const alExportar = async (e: Event) => {
+  if (!(e instanceof CustomEvent)) return
+  const detalle: unknown = e.detail
+  if (!detalle || typeof detalle !== 'object' || !('formato' in detalle)) return
+  const formato = detalle.formato
+  if (formato !== 'txt' && formato !== 'md' && formato !== 'html' && formato !== 'pdf' && formato !== 'docx') return
   sesion.mostrarAviso('PREPARANDO ARCHIVO...')
   try {
     await exportar(formato, {
@@ -843,7 +856,7 @@ const unirse = () => {
   })
 }
 
-const alRecibirEstadoInicial = (estado) => {
+const alRecibirEstadoInicial = (estado: EstadoInicial) => {
   const lista = estado && Array.isArray(estado.bloques) ? estado.bloques : []
   const inicial = lista.map((b) => ({
     id: String(b.id),
@@ -876,7 +889,7 @@ const alRecibirEstadoInicial = (estado) => {
 
   if (activoId.value !== null) {
     const bloqueActivo = bloques.value.find((b) => String(b.id) === String(activoId.value))
-    if (bloqueActivo && !bloqueadoPorOtro(bloqueActivo)) socket.emit('solicitar_bloqueo', String(activoId.value))
+    if (bloqueActivo && !bloqueadoPorOtro(bloqueActivo)) socket?.emit('solicitar_bloqueo', String(activoId.value))
     else activoId.value = null
   }
 }
@@ -904,7 +917,7 @@ onMounted(() => {
 
   socket.on('connect', () => {
     conectado.value = true
-    sesion.miId = String(socket.id)
+    sesion.miId = socket?.id || ''
     unirse()
   })
 
@@ -955,7 +968,7 @@ onMounted(() => {
     pendientes.delete(String(blockId))
     if (String(activoId.value) === String(blockId)) activoId.value = null
     const enfocado = document.activeElement
-    if (enfocado && enfocado.closest && enfocado.closest(`[data-block-id="${blockId}"]`)) enfocado.blur()
+    if (enfocado instanceof HTMLElement && enfocado.closest(`[data-block-id="${CSS.escape(blockId)}"]`)) enfocado.blur()
     sonidos.error()
   })
 

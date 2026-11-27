@@ -4,9 +4,9 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-  "migrate": "node src/config/migrate.js",
-  "test": "echo \"Error: no test specified\" && exit 1"
-},
+    "migrate": "node src/config/migrate.js",
+    "test": "node --test test/*.test.js"
+  },
   "keywords": [],
   "author": "",
   "license": "ISC",

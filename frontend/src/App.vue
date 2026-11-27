@@ -5,7 +5,7 @@
   <PantallaInicio v-else />
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { useSesionStore } from './stores/sesion'
 import MainLayout from './layouts/MainLayout.vue'
 import EditorView from './views/EditorView.vue'

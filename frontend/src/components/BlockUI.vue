@@ -112,47 +112,48 @@
 <script setup>
 import { ref, computed, watch, onMounted } from 'vue'
 import { TIPOS_CON_ENTER_BLOQUE, TIPOS_SIN_TEXTO, filtrarTipos } from '../utils/tipos'
+import type { Bloque, TipoBloque, CambioContenido, CambioTipo, Movimiento, DestinoArrastre, Punto, PegadoBloques } from '../types/editor'
 
-const props = defineProps({
-  bloque: Object,
-  index: Number,
-  isFirst: Boolean,
-  isLast: Boolean,
-  miSocketId: String,
-  miColor: String,
-  soloLectura: Boolean,
-  numero: Number,
-  duenoNombre: String,
-  duenoColor: String,
-  indicador: String,
-  arrastrado: Boolean,
-  hayArrastre: Boolean
-})
+const props = defineProps<{
+  bloque: Bloque
+  index: number
+  isFirst: boolean
+  isLast: boolean
+  miSocketId: string
+  miColor: string
+  soloLectura: boolean
+  numero: number
+  duenoNombre: string
+  duenoColor: string
+  indicador: 'arriba' | 'abajo' | null
+  arrastrado: boolean
+  hayArrastre: boolean
+}>()
 
-const emit = defineEmits([
-  'add-block',
-  'enter-bloque',
-  'delete-block',
-  'delete-empty',
-  'move-up',
-  'move-down',
-  'move-key',
-  'navegar',
-  'update-content',
-  'solicitar-bloqueo',
-  'liberar-bloqueo',
-  'cambiar-tipo',
-  'toggle-hecho',
-  'drag-start',
-  'drag-over',
-  'drop-block',
-  'drag-end',
-  'pegar-bloques',
-  'drag-touch-move'
-])
+const emit = defineEmits<{
+  'add-block': [index: number]
+  'enter-bloque': [index: number]
+  'delete-block': [index: number]
+  'delete-empty': [index: number]
+  'move-up': [index: number]
+  'move-down': [index: number]
+  'move-key': [datos: Movimiento]
+  navegar: [datos: Movimiento]
+  'update-content': [datos: CambioContenido]
+  'solicitar-bloqueo': [id: string]
+  'liberar-bloqueo': [id: string]
+  'cambiar-tipo': [datos: CambioTipo]
+  'toggle-hecho': [index: number]
+  'drag-start': [index: number]
+  'drag-over': [datos: DestinoArrastre]
+  'drop-block': []
+  'drag-end': []
+  'pegar-bloques': [datos: PegadoBloques]
+  'drag-touch-move': [datos: Punto]
+}>()
 
-const filaRef = ref(null)
-const editorRef = ref(null)
+const filaRef = ref<HTMLElement | null>(null)
+const editorRef = ref<HTMLElement | null>(null)
 const enfocado = ref(false)
 const menuAbierto = ref(false)
 const filtro = ref('')
@@ -167,9 +168,7 @@ const editable = computed(() => !bloqueadoPorOtro.value && !props.soloLectura &&
 const opciones = computed(() => filtrarTipos(filtro.value))
 const menuVisible = computed(() => menuAbierto.value && opciones.value.length > 0)
 
-const placeholder = computed(
-  () =>
-    ({
+const placeholders: Partial<Record<TipoBloque, string>> = {
       h1: 'Título 1',
       h2: 'Título 2',
       h3: 'Título 3',
@@ -178,8 +177,8 @@ const placeholder = computed(
       tarea: 'Tarea pendiente',
       cita: 'Escribe una cita...',
       codigo: 'Escribe código...'
-    })[props.bloque.tipo] || "Escribe '/' para ver los bloques..."
-)
+}
+const placeholder = computed(() => placeholders[props.bloque.tipo] || "Escribe '/' para ver los bloques...")
 
 onMounted(() => {
   if (editorRef.value) editorRef.value.innerHTML = props.bloque.contenido || ''
@@ -213,7 +212,7 @@ const alDesenfocar = () => {
   if (!bloqueadoPorOtro.value) emit('liberar-bloqueo', String(props.bloque.id))
 }
 
-const revisarComando = (texto) => {
+const revisarComando = (texto: string) => {
   if (props.bloque.tipo === 'codigo' || !texto.startsWith('/') || texto.includes('\n')) {
     cerrarMenu()
     return
@@ -223,14 +222,15 @@ const revisarComando = (texto) => {
   menuAbierto.value = true
 }
 
-const alEscribir = (e) => {
+const alEscribir = (e: Event) => {
   const editor = e.target
+  if (!(editor instanceof HTMLElement)) return
   if (editor.innerHTML === '<br>') editor.innerHTML = ''
   emit('update-content', { id: String(props.bloque.id), contenido: editor.innerHTML })
-  revisarComando(editor.textContent)
+  revisarComando(editor.textContent || '')
 }
 
-const elegirTipo = (id) => {
+const elegirTipo = (id: TipoBloque) => {
   if (editorRef.value) editorRef.value.innerHTML = ''
   emit('update-content', { id: String(props.bloque.id), contenido: '' })
   cerrarMenu()
@@ -239,7 +239,7 @@ const elegirTipo = (id) => {
 
 const esVacio = () => {
   const editor = editorRef.value
-  return !!editor && editor.textContent.length === 0 && editor.querySelectorAll('div, br').length === 0
+  return !!editor && (editor.textContent || '').length === 0 && editor.querySelectorAll('div, br').length === 0
 }
 
 const posicionLinea = () => {
@@ -258,7 +258,7 @@ const posicionLinea = () => {
   return { primera: arriba < alto * 0.6, ultima: abajo < alto * 0.6 }
 }
 
-const alPulsarTecla = (e) => {
+const alPulsarTecla = (e: KeyboardEvent) => {
   if (e.isComposing) return
   const tecla = e.key
 
@@ -328,7 +328,7 @@ const alPulsarTecla = (e) => {
   }
 }
 
-const alTeclaDivisor = (e) => {
+const alTeclaDivisor = (e: KeyboardEvent) => {
   if (e.key === 'Backspace' || e.key === 'Delete') {
     e.preventDefault()
     emit('delete-block', props.index)
@@ -341,9 +341,9 @@ const alTeclaDivisor = (e) => {
   }
 }
 
-const alPegar = (e) => {
+const alPegar = (e: ClipboardEvent) => {
   e.preventDefault()
-  const datos = e.clipboardData || window.clipboardData
+  const datos = e.clipboardData
   const texto = datos ? datos.getData('text/plain') : ''
   if (!texto) return
   const lineas = texto.replace(/\r\n?/g, '\n').split('\n')
@@ -356,43 +356,45 @@ const alPegar = (e) => {
   emit('pegar-bloques', { index: props.index, lineas: resto })
 }
 
-const alIniciarArrastre = (e) => {
+const alIniciarArrastre = (e: DragEvent) => {
   if (bloqueadoPorOtro.value || props.soloLectura) {
     e.preventDefault()
     return
   }
+  if (!e.dataTransfer) return
   e.dataTransfer.effectAllowed = 'move'
   e.dataTransfer.setData('text/plain', String(props.bloque.id))
   if (filaRef.value) e.dataTransfer.setDragImage(filaRef.value, 24, 16)
   emit('drag-start', props.index)
 }
 
-const alArrastrarSobre = (e) => {
-  if (!props.hayArrastre) return
+const alArrastrarSobre = (e: DragEvent) => {
+  if (!props.hayArrastre || !e.dataTransfer || !filaRef.value) return
   e.preventDefault()
   e.dataTransfer.dropEffect = 'move'
   const caja = filaRef.value.getBoundingClientRect()
   emit('drag-over', { index: props.index, despues: e.clientY > caja.top + caja.height / 2 })
 }
 
-const alSoltar = (e) => {
+const alSoltar = (e: DragEvent) => {
   if (!props.hayArrastre) return
   e.preventDefault()
   emit('drop-block')
 }
 
-const alToqueInicio = (e) => {
+const alToqueInicio = () => {
   if (bloqueadoPorOtro.value || props.soloLectura) return
   emit('drag-start', props.index)
 }
 
-const alToqueMover = (e) => {
+const alToqueMover = (e: TouchEvent) => {
   if (bloqueadoPorOtro.value || props.soloLectura || !props.hayArrastre) return
   const toque = e.touches[0]
+  if (!toque) return
   emit('drag-touch-move', { x: toque.clientX, y: toque.clientY })
 }
 
-const alToqueFin = (e) => {
+const alToqueFin = () => {
   if (!props.hayArrastre) return
   emit('drop-block')
   emit('drag-end')

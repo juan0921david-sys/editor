@@ -93,7 +93,7 @@
           Quien abra este enlace entra al mismo documento y se identifica con su nombre y su ID única.
         </p>
         <div class="campo-copia">
-          <input readonly :value="enlace" @focus="$event.target.select()" />
+          <input readonly :value="enlace" @focus="seleccionarEnlace" />
           <button class="px-btn primary" @click="copiarEnlace">COPIAR</button>
         </div>
         <div class="codigo-doc">CÓDIGO DEL DOCUMENTO <strong>{{ sesion.documentoId }}</strong></div>
@@ -158,10 +158,14 @@
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import BarraFormato from '../components/BarraFormato.vue'
 import { TAMANOS_PAGINA, MARGENES_PAGINA, useSesionStore } from '../stores/sesion'
+import type { Usuario, PaginaConfig } from '../types/editor'
 
 const sesion = useSesionStore()
-const menuActivo = ref(null)
-const modal = ref(null)
+const menuActivo = ref<string | null>(null)
+const modal = ref<'compartir' | 'pagina' | 'atajos' | null>(null)
+const seleccionarEnlace = (evento: FocusEvent) => {
+  if (evento.target instanceof HTMLInputElement) evento.target.select()
+}
 
 const atajos = [
   ['/', 'Abrir el menú de bloques (incluye el salto de página)'],
@@ -187,12 +191,12 @@ const jugadores = computed(() =>
 
 const visibles = computed(() => jugadores.value.slice(0, 3))
 const extra = computed(() => Math.max(0, jugadores.value.length - 3))
-const esYo = (u) => u.id === 'yo' || u.id === sesion.miId || u.uid === sesion.uid
-const inicial = (nombre) => (String(nombre || '?').trim()[0] || '?').toUpperCase()
+const esYo = (u: Usuario) => u.id === 'yo' || u.id === sesion.miId || u.uid === sesion.uid
+const inicial = (nombre: string) => (String(nombre || '?').trim()[0] || '?').toUpperCase()
 
-const textoCm = (cm) => `${cm[0].toFixed(1).replace('.', ',')} × ${cm[1].toFixed(1).replace('.', ',')} cm`
+const textoCm = (cm: [number, number]) => `${cm[0].toFixed(1).replace('.', ',')} × ${cm[1].toFixed(1).replace('.', ',')} cm`
 
-const gruposPagina = computed(() => [
+const gruposPagina = computed<{ clave: keyof PaginaConfig; titulo: string; opciones: { valor: string; etiqueta: string; detalle: string }[] }[]>(() => [
   {
     clave: 'tamano',
     titulo: 'TAMAÑO',
@@ -281,7 +285,7 @@ const menus = computed(() => [
   }
 ])
 
-const alternarMenu = (nombre) => {
+const alternarMenu = (nombre: string) => {
   menuActivo.value = menuActivo.value === nombre ? null : nombre
 }
 
@@ -298,10 +302,11 @@ const copiarEnlace = async () => {
   }
 }
 
-const ejecutarAccion = (accion) => {
+const ejecutarAccion = (accion: string | undefined) => {
+  if (!accion) return
   cerrarMenu()
   if (['cut', 'copy', 'selectAll'].includes(accion)) {
-    document.execCommand(accion, false, null)
+    document.execCommand(accion, false)
   } else if (accion === 'undo') {
     window.dispatchEvent(new CustomEvent('deshacer-documento'))
   } else if (accion === 'redo') {
@@ -332,7 +337,7 @@ const ejecutarAccion = (accion) => {
   }
 }
 
-const alTeclear = (e) => {
+const alTeclear = (e: KeyboardEvent) => {
   if (e.key === 'Escape') {
     if (modal.value) modal.value = null
     else if (sesion.zen) sesion.alternarZen()

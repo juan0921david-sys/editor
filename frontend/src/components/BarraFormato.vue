@@ -75,7 +75,7 @@
           v-for="t in TIPOS"
           :key="t.id"
           class="opcion"
-          :class="{ actual: t.id === sesion.activo.tipo }"
+          :class="{ actual: t.id === sesion.activo?.tipo }"
           @click="elegirTipo(t.id)"
         >
           <span class="icono">{{ t.icono }}</span><span>{{ t.etiqueta }}</span>
@@ -127,6 +127,7 @@ import { useSesionStore } from '../stores/sesion'
 import { TIPOS, etiquetaDeTipo } from '../utils/tipos'
 import { FUENTES, nombreFuente } from '../utils/sanitizar'
 import { sonidos } from '../utils/sonidos'
+import type { TipoBloque } from '../types/editor'
 
 const sesion = useSesionStore()
 
@@ -139,14 +140,14 @@ const formatos = [
   { comando: 'italic', titulo: 'Cursiva (Ctrl+I)', etiqueta: 'I', clase: 'fmt-i' },
   { comando: 'underline', titulo: 'Subrayado (Ctrl+U)', etiqueta: 'U', clase: 'fmt-u' },
   { comando: 'strikeThrough', titulo: 'Tachado', etiqueta: 'S', clase: 'fmt-s' }
-]
+] as const
 
 const alineaciones = [
   { comando: 'justifyLeft', titulo: 'Alinear a la izquierda', barras: [[1, 3, 14], [1, 7, 9], [1, 11, 12]] },
   { comando: 'justifyCenter', titulo: 'Centrar', barras: [[1, 3, 14], [4, 7, 8], [2, 11, 12]] },
   { comando: 'justifyRight', titulo: 'Alinear a la derecha', barras: [[1, 3, 14], [6, 7, 9], [3, 11, 12]] },
   { comando: 'justifyFull', titulo: 'Justificar', barras: [[1, 3, 14], [1, 7, 14], [1, 11, 14]] }
-]
+] as const
 
 const activos = reactive({
   bold: false,
@@ -159,7 +160,7 @@ const activos = reactive({
   justifyFull: false
 })
 
-const abierto = ref(null)
+const abierto = ref<string | null>(null)
 const posicion = ref({ top: 0, left: 0 })
 const tamanoActual = ref(16)
 const fuenteActual = ref('IBM Plex Mono')
@@ -168,16 +169,17 @@ const ultimoFondo = ref('#FFF2A8')
 
 const etiquetaTipo = computed(() => (sesion.activo ? etiquetaDeTipo(sesion.activo.tipo).toUpperCase() : 'BLOQUE'))
 
-const emitir = (nombre, detalle) => window.dispatchEvent(new CustomEvent(nombre, { detail: detalle }))
+const emitir = (nombre: string, detalle?: TipoBloque) => window.dispatchEvent(new CustomEvent(nombre, { detail: detalle }))
 
 const ANCHO_LISTA = 230
 const ANCHO_PALETA = 172
 
-const alternar = (nombre, evento) => {
+const alternar = (nombre: string, evento: MouseEvent) => {
   if (abierto.value === nombre) {
     abierto.value = null
     return
   }
+  if (!(evento.currentTarget instanceof HTMLElement)) return
   const caja = evento.currentTarget.getBoundingClientRect()
   const ancho = nombre === 'color' || nombre === 'fondo' ? ANCHO_PALETA : ANCHO_LISTA
   posicion.value = {
@@ -190,11 +192,11 @@ const alternar = (nombre, evento) => {
 const editorActual = () => {
   const seleccion = window.getSelection()
   const nodo = seleccion ? seleccion.anchorNode : null
-  const elemento = nodo ? (nodo.nodeType === 1 ? nodo : nodo.parentElement) : null
-  return elemento && elemento.closest ? elemento.closest('.rich-textarea') : null
+  const elemento = nodo instanceof Element ? nodo : nodo?.parentElement
+  return elemento?.closest<HTMLElement>('.rich-textarea') ?? null
 }
 
-const conEditor = (accion) => {
+const conEditor = (accion: (editor: HTMLElement) => void) => {
   const editor = editorActual()
   if (!editor || !editor.isContentEditable) {
     sonidos.error()
@@ -206,7 +208,8 @@ const conEditor = (accion) => {
 
 const actualizarEstado = () => {
   const editor = editorActual()
-  Object.keys(activos).forEach((comando) => {
+  const comandos: (keyof typeof activos)[] = [...formatos, ...alineaciones].map((item) => item.comando)
+  comandos.forEach((comando) => {
     if (!editor) {
       activos[comando] = false
       return
@@ -218,52 +221,53 @@ const actualizarEstado = () => {
     }
   })
   if (!editor) return
-  const nodo = window.getSelection().anchorNode
+  const nodo = window.getSelection()?.anchorNode
   if (!nodo) return
-  const elemento = nodo.nodeType === 1 ? nodo : nodo.parentElement
+  const elemento = nodo instanceof Element ? nodo : nodo.parentElement
   if (!elemento) return
   const estilo = getComputedStyle(elemento)
   tamanoActual.value = Math.round(parseFloat(estilo.fontSize)) || 16
   fuenteActual.value = nombreFuente(estilo.fontFamily) || 'IBM Plex Mono'
 }
 
-const formatear = (comando) =>
+const formatear = (comando: string) =>
   conEditor(() => {
-    document.execCommand('styleWithCSS', false, false)
-    document.execCommand(comando, false, null)
+    document.execCommand('styleWithCSS', false, 'false')
+    document.execCommand(comando, false)
   })
 
-const aplicarColor = (comando, valor) => {
+const aplicarColor = (comando: string, valor: string) => {
   abierto.value = null
   conEditor(() => {
-    document.execCommand('styleWithCSS', false, true)
+    document.execCommand('styleWithCSS', false, 'true')
     document.execCommand(comando, false, valor)
     if (comando === 'foreColor') ultimoColor.value = valor
     else if (valor !== 'transparent') ultimoFondo.value = valor
   })
 }
 
-const seleccionarTodoElBloque = (editor) => {
+const seleccionarTodoElBloque = (editor: HTMLElement) => {
   const seleccion = window.getSelection()
-  if (!seleccion.isCollapsed) return
+  if (!seleccion || !seleccion.isCollapsed) return
   const rango = document.createRange()
   rango.selectNodeContents(editor)
   seleccion.removeAllRanges()
   seleccion.addRange(rango)
 }
 
-const reseleccionar = (nodos) => {
+const reseleccionar = (nodos: HTMLElement[]) => {
   if (!nodos.length) return
   const rango = document.createRange()
   rango.setStartBefore(nodos[0])
   rango.setEndAfter(nodos[nodos.length - 1])
   const seleccion = window.getSelection()
+  if (!seleccion) return
   seleccion.removeAllRanges()
   seleccion.addRange(rango)
 }
 
-const convertirFont = (editor, selector, aplicar) => {
-  const nuevos = []
+const convertirFont = (editor: HTMLElement, selector: string, aplicar: (span: HTMLSpanElement, fuente: Element) => void) => {
+  const nuevos: HTMLSpanElement[] = []
   editor.querySelectorAll(selector).forEach((fuente) => {
     const span = document.createElement('span')
     aplicar(span, fuente)
@@ -281,10 +285,10 @@ const convertirFont = (editor, selector, aplicar) => {
   editor.dispatchEvent(new Event('input', { bubbles: true }))
 }
 
-const aplicarTamano = (px) =>
+const aplicarTamano = (px: number) =>
   conEditor((editor) => {
     seleccionarTodoElBloque(editor)
-    document.execCommand('styleWithCSS', false, false)
+    document.execCommand('styleWithCSS', false, 'false')
     document.execCommand('fontSize', false, '7')
     convertirFont(editor, 'font[size="7"]', (span) => {
       span.style.fontSize = `${px}px`
@@ -294,11 +298,11 @@ const aplicarTamano = (px) =>
     }, 10)
   })
 
-const aplicarFuente = (nombre) => {
+const aplicarFuente = (nombre: string) => {
   abierto.value = null
   conEditor((editor) => {
     seleccionarTodoElBloque(editor)
-    document.execCommand('styleWithCSS', false, false)
+    document.execCommand('styleWithCSS', false, 'false')
     document.execCommand('fontName', false, nombre)
     convertirFont(editor, 'font[face]', (span) => {
       span.style.fontFamily = `"${nombre}"`
@@ -307,7 +311,7 @@ const aplicarFuente = (nombre) => {
   })
 }
 
-const cambiarTamano = (direccion) => {
+const cambiarTamano = (direccion: number) => {
   const actual = Number(tamanoActual.value)
   const siguiente =
     direccion > 0
@@ -316,7 +320,7 @@ const cambiarTamano = (direccion) => {
   aplicarTamano(siguiente)
 }
 
-const elegirTipo = (id) => {
+const elegirTipo = (id: TipoBloque) => {
   abierto.value = null
   emitir('cambiar-tipo-activo', id)
 }

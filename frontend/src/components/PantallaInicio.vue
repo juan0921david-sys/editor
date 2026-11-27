@@ -47,7 +47,7 @@
   </div>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { ref, computed, nextTick, onMounted, onUnmounted } from 'vue'
 import { useSesionStore, COLORES } from '../stores/sesion'
 import { sonidos } from '../utils/sonidos'
@@ -57,7 +57,7 @@ const sesion = useSesionStore()
 const paso = ref('titulo')
 const nombre = ref(sesion.nombre)
 const color = ref(sesion.color)
-const entrada = ref(null)
+const entrada = ref<HTMLInputElement | null>(null)
 
 const valido = computed(() => nombre.value.trim().length >= 2)
 const inicial = computed(() => (nombre.value.trim()[0] || '?').toUpperCase())
@@ -70,7 +70,7 @@ const avanzar = async () => {
   if (entrada.value) entrada.value.focus()
 }
 
-const elegirColor = (c) => {
+const elegirColor = (c: string) => {
   color.value = c
   sonidos.clic()
 }
@@ -84,7 +84,7 @@ const comenzar = () => {
   sesion.iniciarSesion(nombre.value, color.value)
 }
 
-const alTeclear = (e) => {
+const alTeclear = (e: KeyboardEvent) => {
   if (paso.value === 'titulo' && (e.key === 'Enter' || e.key === ' ')) {
     e.preventDefault()
     avanzar()

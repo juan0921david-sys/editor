@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref, watch } from 'vue'
 import type { Usuario, PaginaConfig } from '../types/editor'
+import { esRegistro, leerAccessToken } from '../utils/validacion'
 
 export const COLORES: string[] = ['#B9A9E8', '#8B7BE0', '#6F6BD9', '#E8A9D6', '#7FE0C3', '#F2C66D']
 
@@ -50,8 +51,9 @@ export const useSesionStore = defineStore('sesion', () => {
 
   const leerJugador = (): { nombre: string; color: string } | null => {
     try {
-      const dato = JSON.parse(leer('editor-jugador', 'null'))
-      return dato && typeof dato.nombre === 'string' ? dato : null
+      const dato: unknown = JSON.parse(leer('editor-jugador', 'null'))
+      if (!esRegistro(dato) || typeof dato.nombre !== 'string') return null
+      return { nombre: dato.nombre, color: typeof dato.color === 'string' ? dato.color : COLORES[0] }
     } catch {
       return null
     }
@@ -59,12 +61,12 @@ export const useSesionStore = defineStore('sesion', () => {
 
   const leerPagina = (): PaginaConfig | null => {
     try {
-      const dato = JSON.parse(leer('editor-pagina', 'null'))
-      if (!dato) return null
+      const dato: unknown = JSON.parse(leer('editor-pagina', 'null'))
+      if (!esRegistro(dato)) return null
       return {
-        tamano: TAMANOS_PAGINA[dato.tamano] ? dato.tamano : 'carta',
+        tamano: dato.tamano === 'a4' || dato.tamano === 'oficio' ? dato.tamano : 'carta',
         orientacion: dato.orientacion === 'horizontal' ? 'horizontal' : 'vertical',
-        margen: MARGENES_PAGINA[dato.margen] ? dato.margen : 'normal'
+        margen: dato.margen === 'estrecho' || dato.margen === 'amplio' ? dato.margen : 'normal'
       }
     } catch {
       return null
@@ -74,7 +76,7 @@ export const useSesionStore = defineStore('sesion', () => {
   const guardadoDatos = leerJugador()
   const prefiereOscuro = !!(window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches)
 
-  const listo = ref<boolean>(!!guardadoDatos && guardadoDatos.nombre.trim().length >= 2) 
+  const listo = ref<boolean>(!!guardadoDatos && guardadoDatos.nombre.trim().length >= 2)
   const nombre = ref<string>(guardadoDatos ? guardadoDatos.nombre : '')
   const color = ref<string>(guardadoDatos && COLORES.includes(guardadoDatos.color) ? guardadoDatos.color : COLORES[0])
   const miId = ref<string>('')
@@ -123,8 +125,8 @@ export const useSesionStore = defineStore('sesion', () => {
         credentials: 'include'
       })
       if (respuesta.ok) {
-        const datos = await respuesta.json()
-        accessToken.value = datos.accessToken || ''
+        const datos: unknown = await respuesta.json()
+        accessToken.value = leerAccessToken(datos)
       }
     } catch {
       // Modo de sesion local resiliente
@@ -146,9 +148,9 @@ export const useSesionStore = defineStore('sesion', () => {
 
   const configurarPagina = (cambios: Partial<PaginaConfig>): void => {
     const siguiente = { ...pagina.value, ...cambios }
-    pagina.value.tamano = TAMANOS_PAGINA[siguiente.tamano!] ? siguiente.tamano! : 'carta'
+    pagina.value.tamano = siguiente.tamano === 'a4' || siguiente.tamano === 'oficio' ? siguiente.tamano : 'carta'
     pagina.value.orientacion = siguiente.orientacion === 'horizontal' ? 'horizontal' : 'vertical'
-    pagina.value.margen = MARGENES_PAGINA[siguiente.margen!] ? siguiente.margen! : 'normal'
+    pagina.value.margen = siguiente.margen === 'estrecho' || siguiente.margen === 'amplio' ? siguiente.margen : 'normal'
     escribir('editor-pagina', JSON.stringify(pagina.value))
   }
 
