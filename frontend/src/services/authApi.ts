@@ -48,11 +48,12 @@ export const login = async (
 
 export const registro = async (
   nombre: string,
+  username:string, 
   correo: string,
   password: string
 ): Promise<void> => {
   try {
-    await cliente.post('/auth/registro', { nombre, correo, password })
+    await cliente.post('/auth/registro', { nombre, username, correo, password })
   } catch (error) {
     throw extraerError(error)
   }

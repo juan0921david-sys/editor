@@ -70,7 +70,7 @@ const crearAuthService = ({
     return { token, jti, familia }
   }
 
-  const registrar = async ({ nombre, correo, password, rol }) => {
+  const registrar = async ({ nombre, username, correo, password, rol }) => {
     const usuario = await usuarios.crear({ nombre, correo, password, rol })
     return publico(usuario)
   }

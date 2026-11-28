@@ -22,7 +22,23 @@
             autocomplete="name"
             placeholder="TU NOMBRE"
           />
+        
         </template>
+
+        <template v-if="modo === 'registro'">
+          <label class="etiqueta" for="username-jugador">USERNAME</label>
+          <input
+            id="username-jugador"
+            v-model="username"
+            class="campo"
+            minlenght="8"
+            maxlength="20"
+            autocomplete="username"
+            placeholder="TU USERNAME"
+          />
+        
+        </template>
+        
 
         <label class="etiqueta" for="correo-jugador">CORREO</label>
         <input
@@ -35,6 +51,7 @@
           autocomplete="email"
           placeholder="TU CORREO"
         />
+        
 
         <label class="etiqueta" for="password-jugador">CONTRASEÑA</label>
         <input
@@ -47,6 +64,9 @@
           autocomplete="current-password"
           placeholder="MÍNIMO 8 CARACTERES"
         />
+
+        
+
 
         <span class="etiqueta">COLOR</span>
         <div class="colores" role="radiogroup" aria-label="Color de jugador">
@@ -104,6 +124,7 @@ const router = useRouter()
 const paso = ref('titulo')
 const modo = ref<Modo>('login')
 const nombre = ref(sesion.nombre)
+const username=ref('')
 const correo = ref('')
 const password = ref('')
 const color = ref(sesion.color)
